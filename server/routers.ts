@@ -253,7 +253,7 @@ IMPORTANT INSTRUCTIONS:
         ];
 
         // Get AI patient response
-        const response = await invokeLLM({ messages: llmMessages });
+        const response = await invokeLLM({ messages: llmMessages, model: process.env.LLM_MODEL || "gpt-4o-mini" });
         const aiContent = (response.choices[0]?.message?.content as string) || "I'm sorry, could you repeat that?";
 
         // Save AI response
@@ -285,6 +285,7 @@ IMPORTANT INSTRUCTIONS:
         const transcript = history.map(m => `${m.role === "user" ? "RECEPTIONIST" : "PATIENT"}: ${m.content}`).join("\n");
 
         const evaluationResponse = await invokeLLM({
+          model: process.env.LLM_MODEL || "gpt-4o-mini",
           messages: [
             {
               role: "system",

@@ -63,13 +63,35 @@ export async function getAllUsers() {
 export async function getAllScenarios() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(scenarios).orderBy(scenarios.id);
+  return db.select({
+    id: scenarios.id,
+    title: scenarios.title,
+    category: scenarios.category,
+    difficulty: scenarios.difficulty,
+    description: scenarios.description,
+    patientPersona: scenarios.patientPersona,
+    learningObjectives: scenarios.learningObjectives,
+    tags: scenarios.tags,
+    estimatedMinutes: scenarios.estimatedMinutes,
+    createdAt: scenarios.createdAt,
+  }).from(scenarios).orderBy(scenarios.id);
 }
 
 export async function getScenarioById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(scenarios).where(eq(scenarios.id, id)).limit(1);
+  const result = await db.select({
+    id: scenarios.id,
+    title: scenarios.title,
+    category: scenarios.category,
+    difficulty: scenarios.difficulty,
+    description: scenarios.description,
+    patientPersona: scenarios.patientPersona,
+    learningObjectives: scenarios.learningObjectives,
+    tags: scenarios.tags,
+    estimatedMinutes: scenarios.estimatedMinutes,
+    createdAt: scenarios.createdAt,
+  }).from(scenarios).where(eq(scenarios.id, id)).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
 
