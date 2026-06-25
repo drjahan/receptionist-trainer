@@ -358,12 +358,13 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     max_tokens,
   } = params;
 
+    // Default to gpt-4o-mini when using OpenAI; Forge API auto-selects if not set
+  const resolvedModel = model || process.env.LLM_MODEL || (ENV.forgeApiUrl.includes("openai.com") ? "gpt-4o-mini" : undefined);
   const payload: Record<string, unknown> = {
     messages: messages.map(normalizeMessage),
   };
-
-  if (model) {
-    payload.model = model;
+  if (resolvedModel) {
+    payload.model = resolvedModel;
   }
 
   if (tools && tools.length > 0) {
