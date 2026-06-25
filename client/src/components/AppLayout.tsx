@@ -11,7 +11,6 @@ import {
   LogOut,
   Menu,
   X,
-  Stethoscope,
 } from "lucide-react";
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
@@ -44,14 +43,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="container">
           <div className="flex h-16 items-center justify-between gap-4">
             {/* Logo */}
-            <Link href="/" className="flex items-center gap-2.5 shrink-0">
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                <Stethoscope className="w-4.5 h-4.5 text-primary-foreground" />
-              </div>
-              <div className="hidden sm:block">
-                <span className="font-semibold text-foreground text-sm leading-none block">GP Pathfinder</span>
-                <span className="text-xs text-muted-foreground leading-none block mt-0.5">Receptionist Trainer</span>
-              </div>
+            <Link href="/" className="flex items-center shrink-0">
+              <img
+                src="/manus-storage/gp-pathfinder-logo_dfe74db8.png"
+                alt="GP Pathfinder Ai"
+                className="h-9 w-auto object-contain"
+              />
             </Link>
 
             {/* Desktop nav */}

@@ -3,7 +3,7 @@ import { getLoginUrl } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import AppLayout from "@/components/AppLayout";
-import { BookOpen, TrendingUp, Award, Users, ChevronRight, Stethoscope, MessageSquare, BarChart3 } from "lucide-react";
+import { BookOpen, TrendingUp, Award, Users, ChevronRight, MessageSquare, BarChart3 } from "lucide-react";
 
 const features = [
   {
@@ -46,9 +46,8 @@ export default function Home() {
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_oklch(0.55_0.12_195_/_0.15),_transparent_60%)]" />
         <div className="container relative py-20 md:py-28">
           <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 bg-white/10 rounded-full px-4 py-1.5 text-sm font-medium mb-6 border border-white/20">
-              <Stethoscope className="w-3.5 h-3.5" />
-              GP Pathfinder Clinics
+            <div className="inline-flex items-center gap-2 bg-white/10 rounded-full px-2 py-1.5 text-sm font-medium mb-6 border border-white/20">
+              <img src="/manus-storage/gp-pathfinder-logo_dfe74db8.png" alt="GP Pathfinder Ai" className="h-6 w-auto object-contain" />
             </div>
             <h1 className="text-4xl md:text-5xl font-bold leading-tight mb-5">
               Train Smarter.<br />
