@@ -37,3 +37,13 @@
 - [ ] Run DB migration on Railway MySQL
 - [ ] Redeploy to Railway and verify full flow
 - [ ] Test full receptionist training journey end-to-end
+
+## Phase 1 — Graphical Grading & Progress Tracking
+- [ ] Recalibrate grading thresholds (A+=4.7+, A=4.3-4.69, B=3.7-4.29, C=3.0-3.69, D=<3.0)
+- [ ] Rebuild scorecard page with animated radar/spider chart (5 competencies)
+- [ ] Add ring gauge for overall grade display with colour coding
+- [ ] Add animated competency progress bars on scorecard
+- [ ] Build individual progress dashboard (/history) with line chart of score over time
+- [ ] Add bar chart comparing average score per competency across all sessions
+- [ ] Add session stats: total sessions, streak counter, most improved competency
+- [ ] Push all Phase 1 changes to GitHub and redeploy to Railway

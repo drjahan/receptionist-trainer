@@ -360,13 +360,13 @@ Return your assessment as JSON.`,
           evaluation.deEscalation
         ) / 5;
 
+        // Recalibrated thresholds — more discriminating for staff induction
         const overallGrade =
-          overallScore >= 4.5 ? "A+" :
-          overallScore >= 4.0 ? "A" :
-          overallScore >= 3.5 ? "B+" :
-          overallScore >= 3.0 ? "B" :
-          overallScore >= 2.5 ? "C+" :
-          overallScore >= 2.0 ? "C" : "D";
+          overallScore >= 4.7 ? "A+" :
+          overallScore >= 4.3 ? "A" :
+          overallScore >= 3.7 ? "B" :
+          overallScore >= 3.0 ? "C" :
+          overallScore >= 2.0 ? "D" : "F";
 
         const scoreData = {
           sessionId: input.sessionId,
