@@ -11,9 +11,10 @@ import {
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
-  openId: varchar("openId", { length: 64 }).notNull().unique(),
+  openId: varchar("openId", { length: 64 }).unique(), // nullable for standalone auth users
   name: text("name"),
-  email: varchar("email", { length: 320 }),
+  email: varchar("email", { length: 320 }).unique(),
+  passwordHash: varchar("passwordHash", { length: 255 }), // for standalone email/password auth
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -31,7 +32,7 @@ export const scenarios = mysqlTable("scenarios", {
   category: varchar("category", { length: 100 }).notNull(),
   difficulty: mysqlEnum("difficulty", ["beginner", "intermediate", "advanced"]).notNull(),
   description: text("description").notNull(),
-  patientPersona: text("patientPersona").notNull(), // System prompt for AI patient
+  patientPersona: text("patientPersona").notNull(),
   learningObjectives: json("learningObjectives").$type<string[]>().notNull(),
   tags: json("tags").$type<string[]>().notNull(),
   estimatedMinutes: int("estimatedMinutes").default(10).notNull(),
@@ -59,7 +60,7 @@ export type InsertSession = typeof sessions.$inferInsert;
 export const messages = mysqlTable("messages", {
   id: int("id").autoincrement().primaryKey(),
   sessionId: int("sessionId").notNull(),
-  role: mysqlEnum("role", ["user", "assistant"]).notNull(), // user = receptionist, assistant = AI patient
+  role: mysqlEnum("role", ["user", "assistant"]).notNull(),
   content: text("content").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
@@ -73,14 +74,13 @@ export const scores = mysqlTable("scores", {
   sessionId: int("sessionId").notNull().unique(),
   userId: int("userId").notNull(),
   scenarioId: int("scenarioId").notNull(),
-  // Five competencies, each 1-5
   activeListeningEmpathy: float("activeListeningEmpathy").notNull(),
   informationGathering: float("informationGathering").notNull(),
   policyAdherence: float("policyAdherence").notNull(),
   communicationClarity: float("communicationClarity").notNull(),
   deEscalation: float("deEscalation").notNull(),
   overallScore: float("overallScore").notNull(),
-  overallGrade: varchar("overallGrade", { length: 2 }).notNull(), // A, B, C, D, F
+  overallGrade: varchar("overallGrade", { length: 2 }).notNull(),
   wentWell: text("wentWell").notNull(),
   areasForImprovement: text("areasForImprovement").notNull(),
   detailedFeedback: json("detailedFeedback").$type<Record<string, string>>().notNull(),

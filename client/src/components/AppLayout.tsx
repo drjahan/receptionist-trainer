@@ -1,11 +1,9 @@
 import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import {
   BookOpen,
-  LayoutDashboard,
   History,
   ShieldCheck,
   LogOut,
@@ -13,7 +11,6 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
-import { trpc } from "@/lib/trpc";
 
 const navItems = [
   { href: "/scenarios", label: "Scenarios", icon: BookOpen },
@@ -25,12 +22,9 @@ const adminItems = [
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { user, isAuthenticated, loading, logout } = useAuth();
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const logoutMutation = trpc.auth.logout.useMutation({
-    onSuccess: () => { window.location.href = "/"; },
-  });
 
   const isAdmin = user?.role === "admin";
 
@@ -88,7 +82,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     variant="ghost"
                     size="sm"
                     className="hidden sm:flex gap-2 text-muted-foreground"
-                    onClick={() => logoutMutation.mutate()}
+                    onClick={logout}
                   >
                     <LogOut className="w-4 h-4" />
                     Sign out
@@ -104,7 +98,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </>
               ) : (
                 <Button asChild size="sm" className="bg-primary text-primary-foreground">
-                  <a href={getLoginUrl()}>Sign in</a>
+                  <a href="/login">Sign in</a>
                 </Button>
               )}
             </div>
@@ -131,7 +125,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </Link>
             ))}
             <button
-              onClick={() => logoutMutation.mutate()}
+              onClick={logout}
               className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
             >
               <LogOut className="w-4 h-4" />

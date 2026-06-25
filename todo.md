@@ -26,3 +26,14 @@
 - [x] Ensure all 5 competency labels are exact
 - [x] Responsive design check
 - [x] Save checkpoint
+
+## Standalone Auth (Railway Deployment)
+- [ ] Update users table with email/password hash fields in schema
+- [ ] Build standalone auth endpoints (register, login, me, logout) using bcrypt + JWT
+- [ ] Remove Manus OAuth dependency from server
+- [ ] Build standalone Login and Register pages on frontend
+- [ ] Update useAuth hook to use standalone JWT auth
+- [ ] Update AppLayout navigation for standalone auth
+- [ ] Run DB migration on Railway MySQL
+- [ ] Redeploy to Railway and verify full flow
+- [ ] Test full receptionist training journey end-to-end
