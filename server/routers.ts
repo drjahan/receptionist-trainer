@@ -4,6 +4,7 @@ import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { invokeLLM } from "./_core/llm";
 import { transcribeAudio } from "./_core/voiceTranscription";
+import { generateSpeech } from "./_core/tts";
 import { storagePut } from "./storage";
 import { retrieveRelevantPolicies, formatPolicyContext, getVectorDbStats } from "./vectorSearch";
 import {
@@ -222,7 +223,7 @@ export const appRouter = router({
       }),
 
     sendMessage: protectedProcedure
-      .input(z.object({ sessionId: z.number(), content: z.string().min(1).max(2000) }))
+      .input(z.object({ sessionId: z.number(), content: z.string().min(1).max(2000), ttsEnabled: z.boolean().optional() }))
       .mutation(async ({ ctx, input }) => {
         const session = await getSessionById(input.sessionId);
         if (!session) throw new TRPCError({ code: "NOT_FOUND" });
@@ -262,7 +263,19 @@ IMPORTANT INSTRUCTIONS:
         // Save AI response
         await addMessage({ sessionId: input.sessionId, role: "assistant", content: aiContent });
 
-        return { content: aiContent };
+        // Generate TTS audio if requested
+        let audioBase64: string | undefined;
+        if (input.ttsEnabled) {
+          try {
+            const ttsResult = await generateSpeech({ text: aiContent, voice: "nova" });
+            audioBase64 = ttsResult.audioBase64;
+          } catch (err) {
+            // TTS failure is non-fatal — return text only
+            console.error("[TTS] Failed to generate speech:", err);
+          }
+        }
+
+        return { content: aiContent, audioBase64 };
       }),
   }),
 

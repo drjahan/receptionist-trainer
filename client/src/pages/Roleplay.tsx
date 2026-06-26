@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Send, PhoneOff, Phone, User, Bot, Clock, AlertTriangle, Mic, MicOff, Loader2 } from "lucide-react";
+import { Send, PhoneOff, Phone, User, Bot, Clock, AlertTriangle, Mic, MicOff, Loader2, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -36,6 +36,10 @@ export default function Roleplay() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
+  // ─── TTS (patient voice output) state ─────────────────────────────────────
+  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   const { data: session } = trpc.sessions.get.useQuery({ id: sessionId }, { enabled: !!sessionId });
   const { data: scenario } = trpc.scenarios.get.useQuery(
     { id: session?.scenarioId ?? 0 },
@@ -47,9 +51,21 @@ export default function Roleplay() {
   );
 
   const sendMessage = trpc.chat.sendMessage.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
       refetchMessages();
       setInput("");
+      // Auto-play TTS audio if enabled and returned
+      if (data.audioBase64) {
+        const src = `data:audio/mpeg;base64,${data.audioBase64}`;
+        if (audioRef.current) {
+          audioRef.current.pause();
+        }
+        const audio = new Audio(src);
+        audioRef.current = audio;
+        audio.play().catch(() => {
+          toast.info("Tap anywhere to enable audio playback.");
+        });
+      }
     },
     onError: () => toast.error("Failed to send message. Please try again."),
   });
@@ -85,7 +101,7 @@ export default function Roleplay() {
 
   const handleSend = () => {
     if (!input.trim() || sendMessage.isPending) return;
-    sendMessage.mutate({ sessionId, content: input.trim() });
+    sendMessage.mutate({ sessionId, content: input.trim(), ttsEnabled });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -299,6 +315,17 @@ export default function Roleplay() {
                 className="resize-none min-h-[60px] max-h-[120px] text-sm"
                 disabled={sendMessage.isPending || isEvaluating || session.status !== "active" || isTranscribing}
               />
+              {/* TTS speaker toggle */}
+              <Button
+                onClick={() => setTtsEnabled(v => !v)}
+                disabled={isEvaluating || session.status !== "active"}
+                size="icon"
+                variant={ttsEnabled ? "default" : "outline"}
+                className="h-[60px] w-12 shrink-0"
+                title={ttsEnabled ? "Patient voice ON — click to mute" : "Patient voice OFF — click to hear patient speak"}
+              >
+                {ttsEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              </Button>
               {/* Microphone button */}
               <Button
                 onClick={isRecording ? handleStopRecording : handleStartRecording}
