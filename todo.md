@@ -93,10 +93,10 @@
 - [ ] Push all Phase 2 changes to GitHub → Railway auto-deploy
 
 ## Google OAuth Migration (replace Manus OAuth)
-- [ ] Receive Google OAuth Client ID and Client Secret from Dr Jahan
-- [ ] Install passport-google-oauth20 and @types/passport-google-oauth20
-- [ ] Build /api/oauth/google (redirect) and /api/oauth/google/callback routes
-- [ ] Update frontend getLoginUrl() to point to /api/oauth/google
-- [ ] Update ManusDialog login button text to "Sign in with Google"
-- [ ] Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to Railway environment variables
-- [ ] Push to GitHub and verify end-to-end Google sign-in on train.nhsgp.chat
+- [x] Receive Google OAuth Client ID and Client Secret from Dr Jahan
+- [x] Install googleapis package
+- [x] Build /api/oauth/google (redirect) and /api/oauth/google/callback routes
+- [x] Update frontend getLoginUrl() to point to /api/oauth/google
+- [x] Update ManusDialog login button text to "Sign in with Google"
+- [x] Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to Railway environment variables
+- [x] Push to GitHub (commit 4fc1336) — Railway auto-deploying

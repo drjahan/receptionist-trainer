@@ -12,6 +12,7 @@ import { google } from "googleapis";
 import { getDb } from "./db";
 import { users } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
+import { randomBytes } from "crypto";
 import { signToken, STANDALONE_COOKIE_NAME } from "./standaloneAuth";
 
 const COOKIE_NAME = STANDALONE_COOKIE_NAME; // "rt_session"
@@ -48,27 +49,55 @@ function getRedirectUri(req: Request): string {
 export function registerGoogleAuthRoutes(app: Express) {
   // ── Step 1: Redirect to Google ────────────────────────────────────────────
   app.get("/api/oauth/google", (req: Request, res: Response) => {
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+      console.error("[GoogleAuth] GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not set");
+      return res.status(500).send("Google OAuth is not configured on this server.");
+    }
+
     const redirectUri = getRedirectUri(req);
     const oauthClient = getOAuthClient(redirectUri);
+
+    // Generate a random CSRF state token and store in a short-lived cookie
+    const state = randomBytes(16).toString("hex");
+    const isSecure = req.protocol === "https" || req.headers["x-forwarded-proto"] === "https";
+    res.cookie("google_oauth_state", state, {
+      httpOnly: true,
+      secure: isSecure,
+      sameSite: isSecure ? "none" : "lax",
+      maxAge: 10 * 60 * 1000, // 10 minutes
+      path: "/",
+    });
 
     const authUrl = oauthClient.generateAuthUrl({
       access_type: "offline",
       scope: ["openid", "email", "profile"],
       prompt: "select_account",
+      state,
     });
 
-    res.redirect(302, authUrl);
+    return res.redirect(302, authUrl);
   });
 
   // ── Step 2: Handle callback from Google ──────────────────────────────────
   app.get("/api/oauth/google/callback", async (req: Request, res: Response) => {
     const code = req.query.code as string | undefined;
     const error = req.query.error as string | undefined;
+    const returnedState = req.query.state as string | undefined;
 
     if (error || !code) {
       console.error("[GoogleAuth] OAuth error or missing code:", error);
       return res.redirect(302, "/login?error=google_auth_failed");
     }
+
+    // Verify CSRF state
+    const cookies = req.cookies ?? {};
+    const savedState = cookies["google_oauth_state"];
+    if (!savedState || savedState !== returnedState) {
+      console.error("[GoogleAuth] State mismatch — possible CSRF attack");
+      return res.redirect(302, "/login?error=state_mismatch");
+    }
+    // Clear the state cookie
+    res.clearCookie("google_oauth_state", { path: "/" });
 
     try {
       const redirectUri = getRedirectUri(req);
