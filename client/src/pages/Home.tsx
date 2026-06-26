@@ -105,7 +105,7 @@ export default function Home() {
                   ) : (
                     <Button asChild size="lg" className="bg-white text-[oklch(0.22_0.08_260)] hover:bg-white/90 font-semibold shadow-lg">
                       <a href={getLoginUrl()}>
-                        Get Started <ChevronRight className="w-4 h-4 ml-1" />
+                        Sign In to Start Training <ChevronRight className="w-4 h-4 ml-1" />
                       </a>
                     </Button>
                   )}
