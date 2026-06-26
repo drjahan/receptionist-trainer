@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Send, PhoneOff, Phone, User, Bot, Clock, AlertTriangle, Mic, MicOff, Loader2, Volume2, VolumeX } from "lucide-react";
+import { Send, PhoneOff, Phone, User, Bot, Clock, AlertTriangle, Mic, MicOff, Loader2, Volume2, VolumeX, Stethoscope } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -45,6 +45,8 @@ export default function Roleplay() {
     { id: session?.scenarioId ?? 0 },
     { enabled: !!session?.scenarioId }
   );
+
+  const isClinician = (scenario as any)?.mode === "clinician";
   const { data: messages, refetch: refetchMessages } = trpc.chat.getMessages.useQuery(
     { sessionId },
     { enabled: !!sessionId }
@@ -180,8 +182,8 @@ export default function Roleplay() {
         <div className="bg-card rounded-xl border border-border card-shadow p-5 mb-5">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                <Phone className="w-5 h-5 text-primary" />
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isClinician ? "bg-blue-100" : "bg-primary/10"}`}>
+                {isClinician ? <Stethoscope className="w-5 h-5 text-blue-600" /> : <Phone className="w-5 h-5 text-primary" />}
               </div>
               <div>
                 <h1 className="font-semibold text-foreground">{scenario.title}</h1>
@@ -197,7 +199,7 @@ export default function Roleplay() {
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Live Session
+                {isClinician ? "Live Consultation" : "Live Session"}
               </div>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -224,11 +226,11 @@ export default function Roleplay() {
             </div>
           </div>
 
-          {/* Scenario brief */}
-          <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <p className="text-xs text-amber-800 leading-relaxed">
-              <span className="font-semibold">Scenario brief: </span>
+          {/* Scenario / consultation brief */}
+          <div className={`mt-4 rounded-lg p-3 flex gap-2 ${isClinician ? "bg-blue-50 border border-blue-200" : "bg-amber-50 border border-amber-200"}`}>
+            <AlertTriangle className={`w-4 h-4 shrink-0 mt-0.5 ${isClinician ? "text-blue-600" : "text-amber-600"}`} />
+            <p className={`text-xs leading-relaxed ${isClinician ? "text-blue-800" : "text-amber-800"}`}>
+              <span className="font-semibold">{isClinician ? "Consultation brief: " : "Scenario brief: "}</span>
               {scenario.description}
             </p>
           </div>
@@ -241,7 +243,9 @@ export default function Roleplay() {
             {/* Opening instruction */}
             <div className="text-center">
               <span className="inline-block text-xs text-muted-foreground bg-secondary rounded-full px-4 py-1.5">
-                The patient is calling. Respond as you would on the telephone.
+                {isClinician
+                  ? "The patient has arrived. Conduct the consultation as you would in a GP appointment."
+                  : "The patient is calling. Respond as you would on the telephone."}
               </span>
             </div>
 
@@ -264,7 +268,7 @@ export default function Roleplay() {
                   )}
                 >
                   <div className="text-xs font-medium mb-1 opacity-70">
-                    {msg.role === "user" ? "You (Receptionist)" : "Patient"}
+                    {msg.role === "user" ? (isClinician ? "You (Clinician)" : "You (Receptionist)") : "Patient"}
                   </div>
                   {msg.content}
                 </div>
@@ -282,7 +286,7 @@ export default function Roleplay() {
                   <Bot className="w-4 h-4 text-rose-600" />
                 </div>
                 <div className="bg-secondary rounded-2xl rounded-tl-sm px-4 py-3">
-                  <div className="text-xs font-medium mb-1 opacity-70">Patient</div>
+                  <div className="text-xs font-medium mb-1 opacity-70">{isClinician ? "Patient" : "Patient"}</div>
                   <div className="flex gap-1">
                     <span className="w-2 h-2 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "0ms" }} />
                     <span className="w-2 h-2 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "150ms" }} />
@@ -311,7 +315,7 @@ export default function Roleplay() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isTranscribing ? "Transcribing your voice..." : "Type your response or use the microphone..."}
+                placeholder={isTranscribing ? "Transcribing your voice..." : (isClinician ? "Type your response to the patient or use the microphone..." : "Type your response or use the microphone...")}
                 className="resize-none min-h-[60px] max-h-[120px] text-sm"
                 disabled={sendMessage.isPending || isEvaluating || session.status !== "active" || isTranscribing}
               />
@@ -357,7 +361,7 @@ export default function Roleplay() {
               {isRecording ? (
                 <span className="text-destructive font-medium">Recording... Click the microphone button to stop and transcribe.</span>
               ) : (
-                <>Tip: Click the <Mic className="w-3 h-3 inline" /> microphone to speak, or type your response. Click <strong>End &amp; Evaluate</strong> when ready.</>
+                <>{isClinician ? "Tip: Click the " : "Tip: Click the "}<Mic className="w-3 h-3 inline" /> {isClinician ? "microphone to speak, or type your consultation response. Click " : "microphone to speak, or type your response. Click "}<strong>End &amp; Evaluate</strong> when ready.</>
               )}
             </p>
           </div>

@@ -1,0 +1,1 @@
+ALTER TABLE `scenarios` ADD `mode` enum('receptionist','clinician') DEFAULT 'receptionist' NOT NULL;

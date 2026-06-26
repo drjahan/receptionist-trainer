@@ -47,3 +47,14 @@
 - [ ] Add bar chart comparing average score per competency across all sessions
 - [ ] Add session stats: total sessions, streak counter, most improved competency
 - [ ] Push all Phase 1 changes to GitHub and redeploy to Railway
+
+## Clinician Mode
+- [x] Ingest 122 NICE clinical guideline chunks into Railway pgvector (DGX Phase 1 complete)
+- [x] Add `mode` column to scenarios table (receptionist | clinician)
+- [x] Seed 6 clinical consultation scenarios in routers.ts
+- [x] Update scenarios list endpoint to return mode field
+- [x] Update Scenarios page with Receptionist / Clinician mode tabs
+- [x] Update Roleplay page with mode-aware labels (Clinician / Patient, consultation framing)
+- [x] Update scoring engine to use clinical RAG context for clinician sessions
+- [x] Update scoring prompt for clinician mode (clinical reasoning, NICE adherence, safety-netting)
+- [ ] Push Clinician Mode to GitHub → Railway auto-deploy

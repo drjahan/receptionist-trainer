@@ -6,7 +6,7 @@ import { invokeLLM } from "./_core/llm";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { generateSpeech } from "./_core/tts";
 import { storagePut } from "./storage";
-import { retrieveRelevantPolicies, formatPolicyContext, getVectorDbStats } from "./vectorSearch";
+import { retrieveRelevantPolicies, formatPolicyContext, formatClinicalContext, getVectorDbStats } from "./vectorSearch";
 import {
   getAllScenarios,
   getScenarioById,
@@ -110,13 +110,127 @@ const SEED_SCENARIOS = [
   },
 ];
 
+const SEED_CLINICAL_SCENARIOS = [
+  {
+    title: "Hypertension Review",
+    category: "Cardiovascular",
+    difficulty: "intermediate" as const,
+    mode: "clinician" as const,
+    description: "A 58-year-old male patient attends for a routine hypertension review. His home readings have been consistently 155/95 mmHg despite being on amlodipine 5mg. You need to assess his cardiovascular risk, review his medication, and discuss lifestyle modifications in line with NICE NG136.",
+    patientPersona: `You are David, a 58-year-old retired teacher attending your GP for a blood pressure review. You've been on amlodipine for 2 years. Your home BP readings have been around 155/95 mmHg. You are slightly overweight (BMI 28), you drink 20 units of alcohol per week, and you smoke 5 cigarettes a day. You are not particularly worried but you are a bit resistant to adding more tablets. You are open to lifestyle advice if it is explained clearly. You do not have any chest pain, shortness of breath, or visual disturbances. You have not had any ankle swelling. If asked about your diet, you admit to eating a lot of salty food. Start by saying you've come for your blood pressure check.`,
+    learningObjectives: [
+      "Assess cardiovascular risk factors systematically (NICE NG136)",
+      "Identify the need for medication step-up per NICE guidance",
+      "Discuss lifestyle modifications: salt reduction, alcohol, smoking, exercise",
+      "Safety-net appropriately and arrange follow-up",
+    ],
+    tags: ["hypertension", "cardiovascular", "NICE NG136", "medication review"],
+    estimatedMinutes: 10,
+  },
+  {
+    title: "Type 2 Diabetes Annual Review",
+    category: "Endocrinology",
+    difficulty: "intermediate" as const,
+    mode: "clinician" as const,
+    description: "A 64-year-old female patient attends for her annual diabetes review. Her HbA1c has risen to 72 mmol/mol on metformin 1g BD. She has microalbuminuria on her urine dip. You need to review her glycaemic control, address the renal finding, and update her management plan per NICE NG28.",
+    patientPersona: `You are Margaret, a 64-year-old woman with Type 2 diabetes diagnosed 8 years ago. You are on metformin 1g twice daily. You've noticed your energy levels are lower recently and you've been more thirsty. You are worried about your kidneys as your mother had kidney failure. You are not on any other medications. Your last eye screening was 6 months ago and was normal. You are not sure what your HbA1c means. You are open to new medication but worried about side effects. If asked about your diet, you admit to eating more carbohydrates since retiring. Start by saying you've come for your yearly diabetes check.`,
+    learningObjectives: [
+      "Interpret HbA1c and identify need for intensification (NICE NG28)",
+      "Assess and address microalbuminuria — consider ACE inhibitor",
+      "Discuss SGLT2 inhibitor or GLP-1 agonist options per NICE guidance",
+      "Complete annual review checklist: eyes, feet, kidneys, BP, lipids",
+    ],
+    tags: ["diabetes", "HbA1c", "NICE NG28", "annual review", "microalbuminuria"],
+    estimatedMinutes: 12,
+  },
+  {
+    title: "Depression Presentation",
+    category: "Mental Health",
+    difficulty: "intermediate" as const,
+    mode: "clinician" as const,
+    description: "A 32-year-old male presents with a 6-week history of low mood, poor sleep, and reduced concentration affecting his work. He scores 16 on PHQ-9 (moderately severe). You need to assess risk, establish a diagnosis, and formulate a management plan in line with NICE NG222.",
+    patientPersona: `You are James, a 32-year-old software developer. You've been feeling very low for about 6 weeks. You're sleeping only 4-5 hours a night, you've lost interest in things you used to enjoy, and you've been struggling to concentrate at work. You feel worthless and like a burden to your family. When asked directly about suicidal thoughts, you admit to passive thoughts of not wanting to wake up but you have no active plan or intent. You have no previous history of mental health problems. You drink 15 units of alcohol per week. You are reluctant to take antidepressants as you think they are addictive. You would consider therapy. Start by saying you've been struggling with your mood and your wife encouraged you to come in.`,
+    learningObjectives: [
+      "Use PHQ-9 to assess severity and guide management (NICE NG222)",
+      "Conduct thorough suicide risk assessment sensitively",
+      "Discuss stepped care model: CBT, antidepressants, or combined",
+      "Address alcohol use as a contributing factor",
+    ],
+    tags: ["depression", "mental health", "PHQ-9", "NICE NG222", "suicide risk"],
+    estimatedMinutes: 15,
+  },
+  {
+    title: "COPD Exacerbation",
+    category: "Respiratory",
+    difficulty: "advanced" as const,
+    mode: "clinician" as const,
+    description: "A 67-year-old male with known COPD presents with increased breathlessness and purulent sputum for 3 days. He is on a LABA/LAMA inhaler. You need to assess severity, decide on antibiotic and steroid prescribing, and determine if hospital admission is required per NICE NG115.",
+    patientPersona: `You are Brian, a 67-year-old ex-smoker with COPD (diagnosed 5 years ago, FEV1 45% predicted). You've had 3 days of worsening breathlessness and your sputum has turned green. You are using your salbutamol inhaler every 2 hours. Your resting oxygen saturation is 91% (you tell the doctor this from your home oximeter). You feel very unwell. You live alone. You are worried about going to hospital as you have a dog at home. You have had 2 previous exacerbations in the last year. You are on tiotropium and salmeterol/fluticasone inhalers. Start by saying you've been struggling to breathe for the last few days and it's getting worse.`,
+    learningObjectives: [
+      "Assess COPD exacerbation severity using DECAF or clinical criteria (NICE NG115)",
+      "Prescribe antibiotics and oral prednisolone per NICE guidance",
+      "Determine admission vs. home management decision",
+      "Review inhaler technique and escalate therapy if appropriate",
+    ],
+    tags: ["COPD", "exacerbation", "respiratory", "NICE NG115", "admission decision"],
+    estimatedMinutes: 12,
+  },
+  {
+    title: "Anxiety Disorder Assessment",
+    category: "Mental Health",
+    difficulty: "beginner" as const,
+    mode: "clinician" as const,
+    description: "A 26-year-old female presents with a 3-month history of excessive worry, palpitations, and difficulty sleeping. She is concerned she has a heart problem. You need to assess for generalised anxiety disorder, rule out organic causes, and discuss management options per NICE CG113.",
+    patientPersona: `You are Sophie, a 26-year-old primary school teacher. You've been having palpitations, feeling on edge all the time, and struggling to sleep for about 3 months. You are convinced something is wrong with your heart. You've been to A&E twice with palpitations and were told your ECG was normal. You worry excessively about many things — your job, your health, your family. You have a GAD-7 score of 14 (moderate-severe). You are not depressed. You don't drink alcohol or use recreational drugs. You are reluctant to take medication as you are trying to conceive. You would prefer a talking therapy. Start by saying you've been having palpitations and you're worried about your heart.`,
+    learningObjectives: [
+      "Differentiate GAD from cardiac causes and other anxiety disorders (NICE CG113)",
+      "Use GAD-7 to quantify severity and guide management",
+      "Discuss CBT as first-line treatment for GAD",
+      "Address health anxiety and reassure appropriately without reinforcing avoidance",
+    ],
+    tags: ["anxiety", "GAD", "mental health", "NICE CG113", "palpitations"],
+    estimatedMinutes: 10,
+  },
+  {
+    title: "Atrial Fibrillation — New Diagnosis",
+    category: "Cardiovascular",
+    difficulty: "advanced" as const,
+    mode: "clinician" as const,
+    description: "A 72-year-old female is found to have an irregular pulse during a routine appointment. An ECG confirms atrial fibrillation. She has hypertension and type 2 diabetes. You need to assess stroke risk using CHA2DS2-VASc, discuss anticoagulation, and plan rate/rhythm control per NICE NG196.",
+    patientPersona: `You are Eileen, a 72-year-old retired nurse. You came in for a routine blood pressure check and were told your pulse is irregular. You have hypertension (on ramipril) and type 2 diabetes (on metformin). You have never had a stroke or TIA. You are not on any blood thinners. You are worried about taking warfarin as your husband had a bad bleed on it. You have heard about newer blood thinners. You feel slightly breathless on exertion but thought it was just your age. Your heart rate is 88 bpm and irregular. Start by saying you came for a blood pressure check but were told something is wrong with your heart rhythm.`,
+    learningObjectives: [
+      "Calculate CHA2DS2-VASc score and determine anticoagulation need (NICE NG196)",
+      "Discuss DOACs vs warfarin — explain benefits and bleeding risk",
+      "Assess rate vs rhythm control strategy",
+      "Arrange echocardiogram, thyroid function, and cardiology referral appropriately",
+    ],
+    tags: ["atrial fibrillation", "anticoagulation", "CHA2DS2-VASc", "NICE NG196", "DOAC"],
+    estimatedMinutes: 12,
+  },
+];
+
 async function seedScenariosIfEmpty() {
   const existing = await getAllScenarios();
-  if (existing.length > 0) return;
+  if (existing.length > 0) {
+    // Check if clinical scenarios need seeding
+    const hasClinical = existing.some((s) => (s as any).mode === "clinician");
+    if (!hasClinical) {
+      const db = await import("./db").then(m => m.getDb());
+      if (!db) return;
+      const { scenarios: scenariosTable } = await import("../drizzle/schema");
+      for (const s of SEED_CLINICAL_SCENARIOS) {
+        await db.insert(scenariosTable).values(s);
+      }
+    }
+    return;
+  }
   const db = await import("./db").then(m => m.getDb());
   if (!db) return;
   const { scenarios: scenariosTable } = await import("../drizzle/schema");
   for (const s of SEED_SCENARIOS) {
+    await db.insert(scenariosTable).values(s);
+  }
+  for (const s of SEED_CLINICAL_SCENARIOS) {
     await db.insert(scenariosTable).values(s);
   }
 }
@@ -233,17 +347,30 @@ export const appRouter = router({
         const scenario = await getScenarioById(session.scenarioId);
         if (!scenario) throw new TRPCError({ code: "NOT_FOUND" });
 
-        // Save receptionist message
+        // Save user message
         await addMessage({ sessionId: input.sessionId, role: "user", content: input.content });
 
         // Get conversation history for context
         const history = await getMessagesBySessionId(input.sessionId);
 
+        const isClinician = (scenario as any).mode === "clinician";
+
         // Build messages for LLM
         const llmMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
           {
             role: "system",
-            content: `${scenario.patientPersona}
+            content: isClinician
+              ? `${scenario.patientPersona}
+
+IMPORTANT INSTRUCTIONS:
+- You are playing the patient character described above in a GP consultation simulation.
+- Respond naturally as this patient would in a face-to-face GP appointment.
+- Keep responses concise (2-4 sentences) as this is a consultation simulation.
+- Do not break character or acknowledge that this is a training exercise.
+- Do not give medical advice or diagnoses yourself — you are the patient, not the doctor.
+- React authentically to how the clinician handles the consultation — if they are empathetic, thorough, and explain things clearly, respond positively; if they are dismissive, miss important points, or fail to explain, react as the patient naturally would.
+- If the clinician asks about symptoms not yet mentioned, answer honestly based on your character description.`
+              : `${scenario.patientPersona}
 
 IMPORTANT INSTRUCTIONS:
 - You are playing the patient character described above. Stay in character throughout.
@@ -298,50 +425,63 @@ IMPORTANT INSTRUCTIONS:
         const history = await getMessagesBySessionId(input.sessionId);
         if (history.length < 2) throw new TRPCError({ code: "BAD_REQUEST", message: "Not enough conversation to evaluate" });
 
-        const transcript = history.map(m => `${m.role === "user" ? "RECEPTIONIST" : "PATIENT"}: ${m.content}`).join("\n");
+        const isClinician = (scenario as any).mode === "clinician";
+        const speakerLabel = isClinician ? "CLINICIAN" : "RECEPTIONIST";
+        const transcript = history.map(m => `${m.role === "user" ? speakerLabel : "PATIENT"}: ${m.content}`).join("\n");
 
-        // ─── RAG: Retrieve relevant policy chunks ──────────────────────────────
-        // Build a query from the scenario title + a summary of the transcript
+        // ─── RAG: Retrieve relevant chunks (clinical or policy) ─────────────────
         const ragQuery = `${scenario.title}: ${scenario.description}. ${history.slice(0, 4).map(m => m.content).join(" ")}`;
-        const policyChunks = await retrieveRelevantPolicies(ragQuery, {
-          topK: 4,
-          category: "non-clinical",
-          minSimilarity: 0.25,
-        });
-        const policyContext = formatPolicyContext(policyChunks);
-        const policySection = policyContext
-          ? `\n\n${policyContext}\n`
-          : "";
+        let contextSection = "";
+        if (isClinician) {
+          const clinicalChunks = await retrieveRelevantPolicies(ragQuery, {
+            topK: 5,
+            category: "clinical",
+            minSimilarity: 0.2,
+          });
+          const clinicalContext = formatClinicalContext(clinicalChunks);
+          contextSection = clinicalContext ? `\n\n${clinicalContext}\n` : "";
+        } else {
+          const policyChunks = await retrieveRelevantPolicies(ragQuery, {
+            topK: 4,
+            category: "non-clinical",
+            minSimilarity: 0.25,
+          });
+          const policyContext = formatPolicyContext(policyChunks);
+          contextSection = policyContext ? `\n\n${policyContext}\n` : "";
+        }
+
+        // ─── Build mode-specific evaluation prompt ─────────────────────────────
+        const systemPrompt = isClinician
+          ? `You are an experienced GP trainer and clinical educator evaluating a GP registrar or GP's performance in a simulated patient consultation. You must be fair, evidence-based, and constructive in your feedback.
+
+The consultation scenario was: "${scenario.title}" — ${scenario.description}${contextSection}
+Evaluate the clinician's performance across exactly these five competencies, scoring each from 1.0 to 5.0 (decimals allowed):
+
+1. Active Listening and Empathy — Did the clinician demonstrate patient-centred consulting, acknowledge the patient's concerns and ideas/concerns/expectations (ICE), and use empathetic language throughout?
+2. Information Gathering & Clinical Reasoning — Did the clinician take a systematic history, ask relevant red flag questions, form an appropriate differential diagnosis, and gather sufficient information to justify their management plan?
+3. NICE Guideline Adherence — Did the clinician follow NICE guidelines and evidence-based practice for this condition? Were investigations, prescribing, referral decisions, and scoring tools (e.g. PHQ-9, GAD-7, CHA2DS2-VASc) used appropriately?
+4. Communication Clarity — Were explanations clear, jargon-free, and tailored to the patient? Did the patient understand their diagnosis, management plan, and what to do next?
+5. Safety-Netting & De-escalation — Did the clinician provide clear safety-netting advice (when to seek urgent help, red flags to watch for)? Did they manage patient anxiety sensitively and de-escalate any distress or resistance?
+
+Scoring guide:
+1.0-2.0: Poor — significant clinical or communication failures, patient safety may be compromised
+2.1-3.0: Below average — some effort but key gaps in clinical reasoning, NICE adherence, or safety-netting
+3.1-3.9: Competent — adequate performance with room to improve
+4.0-4.5: Good — strong clinical and communication skills with minor gaps
+4.6-5.0: Excellent — exemplary consultation, NICE-concordant management, and robust safety-netting
+
+Return your assessment as JSON.`
+          : `You are an expert GP surgery training assessor evaluating a receptionist's performance in a simulated patient call. You must be fair, constructive, and specific in your feedback.\n\nThe scenario was: "${scenario.title}" — ${scenario.description}${contextSection}\nEvaluate the receptionist's performance across exactly these five competencies, scoring each from 1.0 to 5.0 (decimals allowed):\n\n1. Active Listening and Empathy — Did the receptionist acknowledge the patient's feelings, use empathetic language, and demonstrate they were truly listening?\n2. Information Gathering — Did the receptionist ask relevant questions to understand the patient's needs, including any red flag symptoms or identity verification where appropriate?\n3. Policy Adherence — Did the receptionist correctly follow GP surgery policies (e.g., triage process, Pharmacy First, zero-tolerance, confidentiality, DNA policy)?\n4. Communication Clarity — Were explanations clear, jargon-free, and easy to understand? Did the patient leave the call knowing what to do next?\n5. De-escalation — Did the receptionist remain calm, manage tension effectively, and de-escalate any frustration or distress?\n\nScoring guide:\n1.0-2.0: Poor — significant failures, patient likely left worse off\n2.1-3.0: Below average — some effort but key gaps\n3.1-3.9: Competent — adequate performance with room to improve\n4.0-4.5: Good — strong performance with minor gaps\n4.6-5.0: Excellent — exemplary practice\n\nReturn your assessment as JSON.`;
+
+        const userPrompt = isClinician
+          ? `Here is the full transcript of the consultation:\n\n${transcript}\n\nPlease evaluate the clinician's performance.`
+          : `Here is the full transcript of the call:\n\n${transcript}\n\nPlease evaluate the receptionist's performance.`;
 
         const evaluationResponse = await invokeLLM({
           model: process.env.LLM_MODEL || "gpt-4o-mini",
           messages: [
-            {
-              role: "system",
-              content: `You are an expert GP surgery training assessor evaluating a receptionist's performance in a simulated patient call. You must be fair, constructive, and specific in your feedback.
-
-The scenario was: "${scenario.title}" — ${scenario.description}${policySection}
-Evaluate the receptionist's performance across exactly these five competencies, scoring each from 1.0 to 5.0 (decimals allowed):
-
-1. Active Listening and Empathy — Did the receptionist acknowledge the patient's feelings, use empathetic language, and demonstrate they were truly listening?
-2. Information Gathering — Did the receptionist ask relevant questions to understand the patient's needs, including any red flag symptoms or identity verification where appropriate?
-3. Policy Adherence — Did the receptionist correctly follow GP surgery policies (e.g., triage process, Pharmacy First, zero-tolerance, confidentiality, DNA policy)?
-4. Communication Clarity — Were explanations clear, jargon-free, and easy to understand? Did the patient leave the call knowing what to do next?
-5. De-escalation — Did the receptionist remain calm, manage tension effectively, and de-escalate any frustration or distress?
-
-Scoring guide:
-1.0-2.0: Poor — significant failures, patient likely left worse off
-2.1-3.0: Below average — some effort but key gaps
-3.1-3.9: Competent — adequate performance with room to improve
-4.0-4.5: Good — strong performance with minor gaps
-4.6-5.0: Excellent — exemplary practice
-
-Return your assessment as JSON.`,
-            },
-            {
-              role: "user",
-              content: `Here is the full transcript of the call:\n\n${transcript}\n\nPlease evaluate the receptionist's performance.`,
-            },
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
           ],
           response_format: {
             type: "json_schema",
