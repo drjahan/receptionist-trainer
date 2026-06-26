@@ -1,6 +1,9 @@
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, scenarios, sessions, messages, scores, InsertSession, InsertMessage, InsertScore } from "../drizzle/schema";
+import {
+  InsertUser, users, scenarios, sessions, messages, scores, sessionNotes,
+  InsertSession, InsertMessage, InsertScore, InsertSessionNote,
+} from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -63,35 +66,13 @@ export async function getAllUsers() {
 export async function getAllScenarios() {
   const db = await getDb();
   if (!db) return [];
-  return db.select({
-    id: scenarios.id,
-    title: scenarios.title,
-    category: scenarios.category,
-    difficulty: scenarios.difficulty,
-    description: scenarios.description,
-    patientPersona: scenarios.patientPersona,
-    learningObjectives: scenarios.learningObjectives,
-    tags: scenarios.tags,
-    estimatedMinutes: scenarios.estimatedMinutes,
-    createdAt: scenarios.createdAt,
-  }).from(scenarios).orderBy(scenarios.id);
+  return db.select().from(scenarios).orderBy(scenarios.id);
 }
 
 export async function getScenarioById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select({
-    id: scenarios.id,
-    title: scenarios.title,
-    category: scenarios.category,
-    difficulty: scenarios.difficulty,
-    description: scenarios.description,
-    patientPersona: scenarios.patientPersona,
-    learningObjectives: scenarios.learningObjectives,
-    tags: scenarios.tags,
-    estimatedMinutes: scenarios.estimatedMinutes,
-    createdAt: scenarios.createdAt,
-  }).from(scenarios).where(eq(scenarios.id, id)).limit(1);
+  const result = await db.select().from(scenarios).where(eq(scenarios.id, id)).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
 
@@ -148,6 +129,44 @@ export async function getMessagesBySessionId(sessionId: number) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(messages).where(eq(messages.sessionId, sessionId)).orderBy(messages.createdAt);
+}
+
+// ─── Session Notes ────────────────────────────────────────────────────────────
+
+export async function upsertSessionNote(data: InsertSessionNote) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db.select().from(sessionNotes).where(eq(sessionNotes.sessionId, data.sessionId)).limit(1);
+  if (existing.length > 0) {
+    await db.update(sessionNotes)
+      .set({
+        subjective: data.subjective,
+        objective: data.objective,
+        assessment: data.assessment,
+        plan: data.plan,
+        freeText: data.freeText,
+        submittedAt: new Date(),
+      })
+      .where(eq(sessionNotes.sessionId, data.sessionId));
+    return existing[0].id;
+  }
+  const result = await db.insert(sessionNotes).values({ ...data, submittedAt: new Date() });
+  return result[0].insertId as number;
+}
+
+export async function getSessionNoteBySessionId(sessionId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(sessionNotes).where(eq(sessionNotes.sessionId, sessionId)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function saveNotesFeedback(sessionId: number, feedback: string, score: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(sessionNotes)
+    .set({ notesFeedback: feedback, notesScore: score })
+    .where(eq(sessionNotes.sessionId, sessionId));
 }
 
 // ─── Scores ───────────────────────────────────────────────────────────────────

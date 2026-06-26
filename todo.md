@@ -57,4 +57,37 @@
 - [x] Update Roleplay page with mode-aware labels (Clinician / Patient, consultation framing)
 - [x] Update scoring engine to use clinical RAG context for clinician sessions
 - [x] Update scoring prompt for clinician mode (clinical reasoning, NICE adherence, safety-netting)
-- [ ] Push Clinician Mode to GitHub → Railway auto-deploy
+- [x] Push Clinician Mode to GitHub → Railway auto-deploy (commit e6c0e18)
+
+## RCGP Clinician Mode — Phase 2 (Full Framework)
+
+### Architecture & Design
+- [ ] Define scenario taxonomy: 10 clinical systems × 3 complexity tiers = 30 base scenarios
+- [ ] Define RCGP scoring domains: ICE, cue detection, comorbidity reasoning, documentation quality
+- [ ] Design clinical notes DB schema (session_notes table)
+
+### Scenario Generation Engine
+- [ ] Add clinicalSystem and complexityTier fields to scenarios table
+- [ ] Seed 30+ scenarios across: UTI, Chest Pain, Abdominal Pain, Respiratory, Mental Health, Cardiovascular, MSK, Dermatology, Neurology, Paediatrics
+- [ ] Each system has: Simple / Moderate / Complex tiers with embedded comorbidity traps
+
+### Clinical Documentation Feature
+- [ ] Add session_notes table (sessionId, noteText, submittedAt, feedback)
+- [ ] Add SOAP notes editor panel in Roleplay UI (alongside chat)
+- [ ] Add "Submit Notes" button that saves notes to DB
+- [ ] Include submitted notes in scoring evaluation context
+
+### RCGP Scoring Engine Upgrade
+- [ ] Expand to 7 scored domains (from 5):
+  - Active Listening & Empathy
+  - ICE Elicitation (Ideas, Concerns, Expectations — explicitly scored)
+  - Cue Detection (verbal/non-verbal patient cues)
+  - Clinical Reasoning & Information Gathering
+  - NICE Guideline Adherence
+  - Communication Clarity & Safety-Netting
+  - Documentation Quality (if notes submitted)
+- [ ] Update scorecard page to display all 7 domains
+- [ ] Update DB scores table with new domain columns
+
+### Push & Deploy
+- [ ] Push all Phase 2 changes to GitHub → Railway auto-deploy
