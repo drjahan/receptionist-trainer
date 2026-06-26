@@ -40,7 +40,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={Login} />
-      <Route path="/" component={Home} />
+      <Route path="/" component={() => <ProtectedRoute component={Home} />} />
       <Route path="/scenarios" component={() => <ProtectedRoute component={Scenarios} />} />
       <Route path="/roleplay/:sessionId" component={() => <ProtectedRoute component={Roleplay} />} />
       <Route path="/scorecard/:sessionId" component={() => <ProtectedRoute component={Scorecard} />} />

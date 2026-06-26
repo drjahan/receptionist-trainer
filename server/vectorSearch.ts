@@ -168,30 +168,6 @@ export function formatPolicyContext(chunks: PolicyChunk[]): string {
 }
 
 /**
- * Format retrieved clinical guideline chunks into a context block
- * suitable for injection into a clinician scoring prompt.
- */
-export function formatClinicalContext(chunks: PolicyChunk[]): string {
-  if (chunks.length === 0) {
-    return "";
-  }
-
-  const lines = [
-    "RELEVANT NICE CLINICAL GUIDELINES (retrieved from clinical knowledge base):",
-    "Use these to assess whether the clinician followed evidence-based practice and NICE guidance:",
-    "",
-  ];
-
-  for (const chunk of chunks) {
-    lines.push(`--- ${chunk.documentName} ---`);
-    lines.push(chunk.content.trim());
-    lines.push("");
-  }
-
-  return lines.join("\n");
-}
-
-/**
  * Check if the vector database is available and has data.
  */
 export async function getVectorDbStats(): Promise<{
