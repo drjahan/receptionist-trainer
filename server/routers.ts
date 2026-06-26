@@ -3,6 +3,9 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { invokeLLM } from "./_core/llm";
+import { transcribeAudio } from "./_core/voiceTranscription";
+import { storagePut } from "./storage";
+import { retrieveRelevantPolicies, formatPolicyContext, getVectorDbStats } from "./vectorSearch";
 import {
   getAllScenarios,
   getScenarioById,
@@ -284,6 +287,19 @@ IMPORTANT INSTRUCTIONS:
 
         const transcript = history.map(m => `${m.role === "user" ? "RECEPTIONIST" : "PATIENT"}: ${m.content}`).join("\n");
 
+        // ─── RAG: Retrieve relevant policy chunks ──────────────────────────────
+        // Build a query from the scenario title + a summary of the transcript
+        const ragQuery = `${scenario.title}: ${scenario.description}. ${history.slice(0, 4).map(m => m.content).join(" ")}`;
+        const policyChunks = await retrieveRelevantPolicies(ragQuery, {
+          topK: 4,
+          category: "non-clinical",
+          minSimilarity: 0.25,
+        });
+        const policyContext = formatPolicyContext(policyChunks);
+        const policySection = policyContext
+          ? `\n\n${policyContext}\n`
+          : "";
+
         const evaluationResponse = await invokeLLM({
           model: process.env.LLM_MODEL || "gpt-4o-mini",
           messages: [
@@ -291,8 +307,7 @@ IMPORTANT INSTRUCTIONS:
               role: "system",
               content: `You are an expert GP surgery training assessor evaluating a receptionist's performance in a simulated patient call. You must be fair, constructive, and specific in your feedback.
 
-The scenario was: "${scenario.title}" — ${scenario.description}
-
+The scenario was: "${scenario.title}" — ${scenario.description}${policySection}
 Evaluate the receptionist's performance across exactly these five competencies, scoring each from 1.0 to 5.0 (decimals allowed):
 
 1. Active Listening and Empathy — Did the receptionist acknowledge the patient's feelings, use empathetic language, and demonstrate they were truly listening?
@@ -447,6 +462,24 @@ Return your assessment as JSON.`,
       return result;
     }),
 
+    vectorDbStats: adminProcedure.query(async () => {
+      return getVectorDbStats();
+    }),
+
+    searchPolicies: adminProcedure
+      .input(z.object({
+        query: z.string().min(1).max(500),
+        category: z.enum(["clinical", "non-clinical", "all"]).default("all"),
+        topK: z.number().min(1).max(20).default(5),
+      }))
+      .query(async ({ input }) => {
+        return retrieveRelevantPolicies(input.query, {
+          topK: input.topK,
+          category: input.category,
+          minSimilarity: 0.2,
+        });
+      }),
+
     teamStats: adminProcedure.query(async () => {
       const allScores = await getAllScores();
       if (allScores.length === 0) return null;
@@ -462,6 +495,48 @@ Return your assessment as JSON.`,
         avgDeEscalation: avg("deEscalation"),
       };
     }),
+  }),
+
+  // ─── Voice Interface ─────────────────────────────────────────────────────────
+  voice: router({
+    // Upload audio blob and get back a storage URL
+    uploadAudio: protectedProcedure
+      .input(z.object({
+        audioBase64: z.string(),        // base64-encoded audio
+        mimeType: z.string().default("audio/webm"),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const buffer = Buffer.from(input.audioBase64, "base64");
+        if (buffer.byteLength > 16 * 1024 * 1024) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Audio file exceeds 16 MB limit" });
+        }
+        const ext = input.mimeType.includes("webm") ? "webm"
+          : input.mimeType.includes("mp4") ? "mp4"
+          : input.mimeType.includes("ogg") ? "ogg"
+          : "wav";
+        const key = `voice/${ctx.user.id}/${Date.now()}.${ext}`;
+        const { url } = await storagePut(key, buffer, input.mimeType);
+        return { url, key };
+      }),
+
+    // Transcribe an uploaded audio file via Whisper
+    transcribe: protectedProcedure
+      .input(z.object({
+        audioUrl: z.string(),
+        language: z.string().optional(),
+        sessionId: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const result = await transcribeAudio({
+          audioUrl: input.audioUrl,
+          language: input.language ?? "en",
+          prompt: "GP surgery receptionist training call. Transcribe accurately.",
+        });
+        if ("error" in result) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: result.error });
+        }
+        return { text: result.text, language: result.language, duration: result.duration };
+      }),
   }),
 });
 

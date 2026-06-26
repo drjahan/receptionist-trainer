@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Send, PhoneOff, Phone, User, Bot, Clock, AlertTriangle } from "lucide-react";
+import { Send, PhoneOff, Phone, User, Bot, Clock, AlertTriangle, Mic, MicOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -29,6 +29,12 @@ export default function Roleplay() {
   const [startTime] = useState(Date.now());
   const [elapsed, setElapsed] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // ─── Voice recording state ────────────────────────────────────────────────
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   const { data: session } = trpc.sessions.get.useQuery({ id: sessionId }, { enabled: !!sessionId });
   const { data: scenario } = trpc.scenarios.get.useQuery(
@@ -86,6 +92,52 @@ export default function Roleplay() {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+  };
+
+  const uploadAudio = trpc.voice.uploadAudio.useMutation();
+  const transcribeAudio = trpc.voice.transcribe.useMutation();
+
+  const handleStartRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
+      const recorder = new MediaRecorder(stream, { mimeType });
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        if (blob.size < 500) return;
+        setIsTranscribing(true);
+        try {
+          const arrayBuffer = await blob.arrayBuffer();
+          const base64 = btoa(String.fromCharCode(...Array.from(new Uint8Array(arrayBuffer))));
+          const { url } = await uploadAudio.mutateAsync({ audioBase64: base64, mimeType });
+          const { text } = await transcribeAudio.mutateAsync({ audioUrl: url });
+          if (text?.trim()) {
+            setInput(prev => prev ? prev + " " + text.trim() : text.trim());
+          }
+        } catch {
+          toast.error("Voice transcription failed. Please type your response.");
+        } finally {
+          setIsTranscribing(false);
+        }
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+    } catch {
+      toast.error("Microphone access denied. Please allow microphone access to use voice input.");
+    }
+  };
+
+  const handleStopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
     }
   };
 
@@ -243,21 +295,43 @@ export default function Roleplay() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Type your response to the patient... (Enter to send, Shift+Enter for new line)"
+                placeholder={isTranscribing ? "Transcribing your voice..." : "Type your response or use the microphone..."}
                 className="resize-none min-h-[60px] max-h-[120px] text-sm"
-                disabled={sendMessage.isPending || isEvaluating || session.status !== "active"}
+                disabled={sendMessage.isPending || isEvaluating || session.status !== "active" || isTranscribing}
               />
+              {/* Microphone button */}
+              <Button
+                onClick={isRecording ? handleStopRecording : handleStartRecording}
+                disabled={isEvaluating || session.status !== "active" || isTranscribing || sendMessage.isPending}
+                size="icon"
+                variant={isRecording ? "destructive" : "outline"}
+                className={`h-[60px] w-12 shrink-0 transition-all ${isRecording ? "animate-pulse" : ""}`}
+                title={isRecording ? "Stop recording" : "Start voice input"}
+              >
+                {isTranscribing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : isRecording ? (
+                  <MicOff className="w-4 h-4" />
+                ) : (
+                  <Mic className="w-4 h-4" />
+                )}
+              </Button>
+              {/* Send button */}
               <Button
                 onClick={handleSend}
                 disabled={!input.trim() || sendMessage.isPending || isEvaluating}
                 size="icon"
                 className="h-[60px] w-12 shrink-0"
               >
-                <Send className="w-4 h-4" />
+                {sendMessage.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               </Button>
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              Tip: When you are ready to finish, click <strong>End &amp; Evaluate</strong> to receive your competency scorecard.
+              {isRecording ? (
+                <span className="text-destructive font-medium">Recording... Click the microphone button to stop and transcribe.</span>
+              ) : (
+                <>Tip: Click the <Mic className="w-3 h-3 inline" /> microphone to speak, or type your response. Click <strong>End &amp; Evaluate</strong> when ready.</>
+              )}
             </p>
           </div>
         </div>
