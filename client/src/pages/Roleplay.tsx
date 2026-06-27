@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Send, PhoneOff, Phone, User, Bot, Clock, AlertTriangle } from "lucide-react";
+import { Send, PhoneOff, Phone, User, Bot, Clock, AlertTriangle, Mic, MicOff, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -20,15 +20,150 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+// ─── Web Speech API types ────────────────────────────────────────────────────
+declare global {
+  interface Window {
+    SpeechRecognition: typeof SpeechRecognition;
+    webkitSpeechRecognition: typeof SpeechRecognition;
+  }
+}
+
+function getSpeechRecognition(): typeof SpeechRecognition | null {
+  if (typeof window === "undefined") return null;
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+// ─── useSpeechRecognition hook ───────────────────────────────────────────────
+function useSpeechRecognition({
+  onResult,
+  onEnd,
+}: {
+  onResult: (transcript: string, isFinal: boolean) => void;
+  onEnd: () => void;
+}) {
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [isSupported] = useState(() => !!getSpeechRecognition());
+
+  const start = useCallback(() => {
+    const SR = getSpeechRecognition();
+    if (!SR) return;
+    const recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-GB";
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let interimTranscript = "";
+      let finalTranscript = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          finalTranscript += result[0].transcript;
+        } else {
+          interimTranscript += result[0].transcript;
+        }
+      }
+      if (finalTranscript) {
+        onResult(finalTranscript, true);
+      } else if (interimTranscript) {
+        onResult(interimTranscript, false);
+      }
+    };
+
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      if (event.error === "not-allowed") {
+        toast.error("Microphone access denied. Please allow microphone access in your browser settings.");
+      } else if (event.error === "no-speech") {
+        // Silently restart on no-speech timeout
+      } else {
+        console.warn("Speech recognition error:", event.error);
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      onEnd();
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsListening(true);
+  }, [onResult, onEnd]);
+
+  const stop = useCallback(() => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setIsListening(false);
+  }, []);
+
+  const toggle = useCallback(() => {
+    if (isListening) {
+      stop();
+    } else {
+      start();
+    }
+  }, [isListening, start, stop]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop();
+    };
+  }, []);
+
+  return { isListening, isSupported, toggle, stop };
+}
+
+// ─── useTTS hook ─────────────────────────────────────────────────────────────
+function useTTS() {
+  const [isMuted, setIsMuted] = useState(false);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  const speak = useCallback((text: string) => {
+    if (isMuted || typeof window === "undefined" || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-GB";
+    utterance.rate = 0.95;
+    utterance.pitch = 1.0;
+    // Prefer a British English voice if available
+    const voices = window.speechSynthesis.getVoices();
+    const britishVoice = voices.find(v =>
+      v.lang === "en-GB" || v.name.toLowerCase().includes("british") || v.name.toLowerCase().includes("uk")
+    );
+    if (britishVoice) utterance.voice = britishVoice;
+    utteranceRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  }, [isMuted]);
+
+  const stop = useCallback(() => {
+    window.speechSynthesis?.cancel();
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    setIsMuted(prev => {
+      if (!prev) window.speechSynthesis?.cancel();
+      return !prev;
+    });
+  }, []);
+
+  return { speak, stop, isMuted, toggleMute };
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
 export default function Roleplay() {
   const params = useParams<{ sessionId: string }>();
   const sessionId = parseInt(params.sessionId || "0");
   const [, navigate] = useLocation();
   const [input, setInput] = useState("");
+  const [interimTranscript, setInterimTranscript] = useState("");
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [startTime] = useState(Date.now());
   const [elapsed, setElapsed] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const prevMessageCountRef = useRef(0);
 
   const { data: session } = trpc.sessions.get.useQuery({ id: sessionId }, { enabled: !!sessionId });
   const { data: scenario } = trpc.scenarios.get.useQuery(
@@ -40,10 +175,26 @@ export default function Roleplay() {
     { enabled: !!sessionId }
   );
 
+  const { speak, isMuted, toggleMute } = useTTS();
+
+  // Auto-speak new patient messages
+  useEffect(() => {
+    if (!messages || messages.length === 0) return;
+    const newCount = messages.length;
+    if (newCount > prevMessageCountRef.current) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg.role === "assistant") {
+        speak(lastMsg.content);
+      }
+      prevMessageCountRef.current = newCount;
+    }
+  }, [messages, speak]);
+
   const sendMessage = trpc.chat.sendMessage.useMutation({
     onSuccess: () => {
       refetchMessages();
       setInput("");
+      setInterimTranscript("");
     },
     onError: () => toast.error("Failed to send message. Please try again."),
   });
@@ -56,6 +207,28 @@ export default function Roleplay() {
       setIsEvaluating(false);
       toast.error("Failed to evaluate session. Please try again.");
     },
+  });
+
+  // ─── Speech recognition ────────────────────────────────────────────────────
+  const handleSpeechResult = useCallback((transcript: string, isFinal: boolean) => {
+    if (isFinal) {
+      setInput(prev => {
+        const trimmed = prev.trim();
+        return trimmed ? `${trimmed} ${transcript.trim()}` : transcript.trim();
+      });
+      setInterimTranscript("");
+    } else {
+      setInterimTranscript(transcript);
+    }
+  }, []);
+
+  const handleSpeechEnd = useCallback(() => {
+    setInterimTranscript("");
+  }, []);
+
+  const { isListening, isSupported, toggle: toggleMic, stop: stopMic } = useSpeechRecognition({
+    onResult: handleSpeechResult,
+    onEnd: handleSpeechEnd,
   });
 
   // Timer
@@ -78,8 +251,10 @@ export default function Roleplay() {
   };
 
   const handleSend = () => {
-    if (!input.trim() || sendMessage.isPending) return;
-    sendMessage.mutate({ sessionId, content: input.trim() });
+    const text = input.trim();
+    if (!text || sendMessage.isPending) return;
+    stopMic();
+    sendMessage.mutate({ sessionId, content: text });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -90,9 +265,12 @@ export default function Roleplay() {
   };
 
   const handleEndSession = () => {
+    stopMic();
     setIsEvaluating(true);
     evaluateMutation.mutate({ sessionId });
   };
+
+  const isInputDisabled = sendMessage.isPending || isEvaluating || session?.status !== "active";
 
   if (!session || !scenario) {
     return (
@@ -127,6 +305,16 @@ export default function Roleplay() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {/* TTS mute toggle */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn("h-9 w-9", isMuted ? "text-muted-foreground" : "text-primary")}
+                onClick={toggleMute}
+                title={isMuted ? "Unmute patient voice" : "Mute patient voice"}
+              >
+                {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+              </Button>
               <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Live Session
@@ -135,7 +323,7 @@ export default function Roleplay() {
                 <AlertDialogTrigger asChild>
                   <Button variant="destructive" size="sm" className="gap-2" disabled={isEvaluating || (messages?.length ?? 0) < 2}>
                     <PhoneOff className="w-4 h-4" />
-                    End & Evaluate
+                    End &amp; Evaluate
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
@@ -148,7 +336,7 @@ export default function Roleplay() {
                   <AlertDialogFooter>
                     <AlertDialogCancel>Continue Practice</AlertDialogCancel>
                     <AlertDialogAction onClick={handleEndSession} className="bg-destructive hover:bg-destructive/90">
-                      End & Get Scorecard
+                      End &amp; Get Scorecard
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -167,7 +355,7 @@ export default function Roleplay() {
         </div>
 
         {/* Chat area */}
-        <div className="bg-card rounded-xl border border-border card-shadow flex flex-col" style={{ height: "calc(100vh - 380px)", minHeight: "400px" }}>
+        <div className="bg-card rounded-xl border border-border card-shadow flex flex-col" style={{ height: "calc(100vh - 400px)", minHeight: "400px" }}>
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-5 space-y-4">
             {/* Opening instruction */}
@@ -196,7 +384,7 @@ export default function Roleplay() {
                   )}
                 >
                   <div className="text-xs font-medium mb-1 opacity-70">
-                    {msg.role === "user" ? "You (Receptionist)" : "Patient"}
+                    {msg.role === "user" ? "You" : "Patient"}
                   </div>
                   {msg.content}
                 </div>
@@ -238,14 +426,48 @@ export default function Roleplay() {
 
           {/* Input area */}
           <div className="border-t border-border p-4">
+            {/* Live transcript preview */}
+            {(isListening && interimTranscript) && (
+              <div className="mb-2 px-3 py-2 bg-primary/5 border border-primary/20 rounded-lg text-sm text-muted-foreground italic flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
+                <span className="truncate">{interimTranscript}</span>
+              </div>
+            )}
             <div className="flex gap-3 items-end">
+              {/* Mic button */}
+              {isSupported && (
+                <Button
+                  type="button"
+                  variant={isListening ? "default" : "outline"}
+                  size="icon"
+                  className={cn(
+                    "h-[60px] w-12 shrink-0 transition-all",
+                    isListening && "bg-rose-500 hover:bg-rose-600 border-rose-500 shadow-lg shadow-rose-200 animate-pulse"
+                  )}
+                  onClick={toggleMic}
+                  disabled={isInputDisabled}
+                  title={isListening ? "Stop recording" : "Start voice input"}
+                >
+                  {isListening ? (
+                    <MicOff className="w-5 h-5" />
+                  ) : (
+                    <Mic className="w-5 h-5" />
+                  )}
+                </Button>
+              )}
               <Textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Type your response to the patient... (Enter to send, Shift+Enter for new line)"
+                placeholder={
+                  isListening
+                    ? "Listening… speak now (or type)"
+                    : isSupported
+                    ? "Type your response or press the mic button to speak…"
+                    : "Type your response to the patient… (Enter to send, Shift+Enter for new line)"
+                }
                 className="resize-none min-h-[60px] max-h-[120px] text-sm"
-                disabled={sendMessage.isPending || isEvaluating || session.status !== "active"}
+                disabled={isInputDisabled}
               />
               <Button
                 onClick={handleSend}
@@ -256,9 +478,18 @@ export default function Roleplay() {
                 <Send className="w-4 h-4" />
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Tip: When you are ready to finish, click <strong>End &amp; Evaluate</strong> to receive your competency scorecard.
-            </p>
+            <div className="flex items-center justify-between mt-2">
+              <p className="text-xs text-muted-foreground">
+                {isListening
+                  ? "Recording… click the mic button again to stop, then press Send."
+                  : "Tip: Click the mic button to speak, or type your response. Press Enter to send."}
+              </p>
+              {!isSupported && (
+                <p className="text-xs text-amber-600">
+                  Voice input not available in this browser.
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { invokeLLM } from "./_core/llm";
 import { retrieveRelevantPolicies, formatPolicyContext, getVectorDbStats } from "./vectorSearch";
+import { ALL_SCENARIOS } from "./scenarioSeeds";
 import {
   getAllScenarios,
   getScenarioById,
@@ -24,9 +25,9 @@ import {
 
 // ─── Seed scenarios helper (called on first load) ────────────────────────────
 
-const SEED_SCENARIOS = [
+const SEED_SCENARIOS_LEGACY = [
   {
-    title: "The Urgent Demander",
+    title: "__REPLACED__",
     category: "Appointment Management",
     difficulty: "intermediate" as const,
     description: "An anxious parent calls demanding an urgent same-day appointment for their child who has a high fever. All routine slots are full. The receptionist must triage effectively, explain the process, and remain calm under pressure.",
@@ -109,13 +110,27 @@ const SEED_SCENARIOS = [
 
 async function seedScenariosIfEmpty() {
   const existing = await getAllScenarios();
-  if (existing.length > 0) return;
+  if (existing.length >= ALL_SCENARIOS.length) return;
   const db = await import("./db").then(m => m.getDb());
   if (!db) return;
   const { scenarios: scenariosTable } = await import("../drizzle/schema");
-  for (const s of SEED_SCENARIOS) {
-    await db.insert(scenariosTable).values(s);
+  // Clear and re-seed to ensure we have the full library
+  await db.delete(scenariosTable);
+  for (const s of ALL_SCENARIOS) {
+    await db.insert(scenariosTable).values({
+      title: s.title,
+      category: s.category,
+      difficulty: s.difficulty,
+      mode: s.mode,
+      clinicalSystem: s.clinicalSystem ?? null,
+      description: s.description,
+      patientPersona: s.patientPersona,
+      learningObjectives: s.learningObjectives,
+      tags: s.tags,
+      estimatedMinutes: s.estimatedMinutes,
+    });
   }
+  console.log(`[Seed] Seeded ${ALL_SCENARIOS.length} scenarios`);
 }
 
 // ─── Admin guard ─────────────────────────────────────────────────────────────
@@ -236,11 +251,21 @@ export const appRouter = router({
         // Get conversation history for context
         const history = await getMessagesBySessionId(input.sessionId);
 
-        // Build messages for LLM
-        const llmMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
-          {
-            role: "system",
-            content: `${scenario.patientPersona}
+        // Build mode-specific system prompt
+        const isClinicianMode = (scenario.mode as string) === "clinician";
+        const systemPrompt = isClinicianMode
+          ? `${scenario.patientPersona}
+
+IMPORTANT INSTRUCTIONS:
+- You are playing the patient character described above in a GP clinical consultation simulation.
+- Respond naturally as this patient would in a real GP appointment (face-to-face or telephone).
+- Keep responses realistic and conversational (2-5 sentences). Reveal information gradually — do not volunteer all symptoms at once.
+- Do not break character or acknowledge that this is a training exercise.
+- Do not give medical advice, diagnoses, or suggest treatments to the clinician.
+- React authentically to the clinician's approach — if they use ICE (ideas, concerns, expectations) and are empathetic, open up more; if they are dismissive or miss cues, be less forthcoming.
+- If the clinician asks a direct question, answer it honestly as the patient would.
+- Hidden cues should only be revealed if the clinician asks the right questions.`
+          : `${scenario.patientPersona}
 
 IMPORTANT INSTRUCTIONS:
 - You are playing the patient character described above. Stay in character throughout.
@@ -248,7 +273,13 @@ IMPORTANT INSTRUCTIONS:
 - Keep responses concise (2-4 sentences) as this is a phone call simulation.
 - Do not break character or acknowledge that this is a training exercise.
 - Do not give medical advice or diagnoses.
-- React authentically to how the receptionist handles the call — if they are empathetic and follow good practice, respond positively; if they are dismissive or make errors, react as the patient naturally would.`,
+- React authentically to how the receptionist handles the call — if they are empathetic and follow good practice, respond positively; if they are dismissive or make errors, react as the patient naturally would.`;
+
+        // Build messages for LLM
+        const llmMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
+          {
+            role: "system",
+            content: systemPrompt,
           },
           ...history.map(m => ({ role: m.role as "user" | "assistant", content: m.content })),
         ];
@@ -283,27 +314,44 @@ IMPORTANT INSTRUCTIONS:
         const history = await getMessagesBySessionId(input.sessionId);
         if (history.length < 2) throw new TRPCError({ code: "BAD_REQUEST", message: "Not enough conversation to evaluate" });
 
-        const transcript = history.map(m => `${m.role === "user" ? "RECEPTIONIST" : "PATIENT"}: ${m.content}`).join("\n");
+        const isClinicianEval = (scenario.mode as string) === "clinician";
+        const speakerLabel = isClinicianEval ? "CLINICIAN" : "RECEPTIONIST";
+        const transcript = history.map(m => `${m.role === "user" ? speakerLabel : "PATIENT"}: ${m.content}`).join("\n");
 
-        // ─── RAG: Retrieve relevant policy chunks ──────────────────────────────
-        // Build a query from the scenario title + a summary of the transcript
+        // ─── RAG: Retrieve relevant policy chunks ──────────────────────
         const ragQuery = `${scenario.title}: ${scenario.description}. ${history.slice(0, 4).map(m => m.content).join(" ")}`;
         const policyChunks = await retrieveRelevantPolicies(ragQuery, {
           topK: 4,
-          category: "non-clinical",
+          category: isClinicianEval ? "clinical" : "non-clinical",
           minSimilarity: 0.25,
         });
         const policyContext = formatPolicyContext(policyChunks);
-        const policySection = policyContext
-          ? `\n\n${policyContext}\n`
-          : "";
+        const policySection = policyContext ? `\n\n${policyContext}\n` : "";
 
-        const evaluationResponse = await invokeLLM({
-          model: process.env.LLM_MODEL || "gpt-4o-mini",
-          messages: [
-            {
-              role: "system",
-              content: `You are an expert GP surgery training assessor evaluating a receptionist's performance in a simulated patient call. You must be fair, constructive, and specific in your feedback.
+        // ─── Build mode-specific evaluation prompt ─────────────────────────────
+        const evaluationSystemPrompt = isClinicianEval
+          ? `You are an experienced GP trainer and MRCGP examiner evaluating a GP clinician's performance in a simulated patient consultation. Be fair, constructive, and specific.
+
+The scenario was: "${scenario.title}" — ${scenario.description}${policySection}
+Learning objectives: ${scenario.learningObjectives.join("; ")}
+
+Evaluate the clinician's performance across exactly these five competencies, scoring each from 1.0 to 5.0 (decimals allowed):
+
+1. Active Listening and Empathy — Did the clinician use ICE (ideas, concerns, expectations), demonstrate empathy, and build rapport?
+2. Information Gathering — Did the clinician take a systematic history, identify red flags, and elicit the presenting complaint fully?
+3. Clinical Management — Was the management plan appropriate, evidence-based (NICE/SIGN/BTS guidelines), and safe? Were red flags acted upon correctly?
+4. Communication Clarity — Were explanations clear, jargon-free, and appropriate to the patient? Was shared decision making used?
+5. Safety Netting — Did the clinician provide appropriate safety-net advice, follow-up arrangements, and identify when to escalate?
+
+Scoring guide:
+1.0-2.0: Unsafe or significantly below standard — patient at risk
+2.1-3.0: Below standard — significant gaps in knowledge or skills
+3.1-3.9: Competent — meets minimum standard with room to improve
+4.0-4.5: Good — above standard, minor gaps only
+4.6-5.0: Excellent — MRCGP/CSA distinction standard
+
+Return your assessment as JSON.`
+          : `You are an expert GP surgery training assessor evaluating a receptionist's performance in a simulated patient call. You must be fair, constructive, and specific in your feedback.
 
 The scenario was: "${scenario.title}" — ${scenario.description}${policySection}
 Evaluate the receptionist's performance across exactly these five competencies, scoring each from 1.0 to 5.0 (decimals allowed):
@@ -321,12 +369,17 @@ Scoring guide:
 4.0-4.5: Good — strong performance with minor gaps
 4.6-5.0: Excellent — exemplary practice
 
-Return your assessment as JSON.`,
-            },
-            {
-              role: "user",
-              content: `Here is the full transcript of the call:\n\n${transcript}\n\nPlease evaluate the receptionist's performance.`,
-            },
+Return your assessment as JSON.`;
+
+        const evaluationUserPrompt = isClinicianEval
+          ? `Here is the full transcript of the consultation:\n\n${transcript}\n\nPlease evaluate the clinician's performance.`
+          : `Here is the full transcript of the call:\n\n${transcript}\n\nPlease evaluate the receptionist's performance.`;
+
+        const evaluationResponse = await invokeLLM({
+          model: process.env.LLM_MODEL || "gpt-4o-mini",
+          messages: [
+            { role: "system", content: evaluationSystemPrompt },
+            { role: "user", content: evaluationUserPrompt },
           ],
           response_format: {
             type: "json_schema",
@@ -341,7 +394,7 @@ Return your assessment as JSON.`,
                   policyAdherence: { type: "number", description: "Score 1.0-5.0" },
                   communicationClarity: { type: "number", description: "Score 1.0-5.0" },
                   deEscalation: { type: "number", description: "Score 1.0-5.0" },
-                  wentWell: { type: "string", description: "2-3 sentences on what the receptionist did well" },
+                  wentWell: { type: "string", description: "2-3 sentences on what went well" },
                   areasForImprovement: { type: "string", description: "2-3 sentences on specific areas to improve" },
                   activeListeningEmpathyFeedback: { type: "string", description: "Specific feedback for this competency" },
                   informationGatheringFeedback: { type: "string", description: "Specific feedback for this competency" },

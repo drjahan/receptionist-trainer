@@ -31,6 +31,8 @@ export const scenarios = mysqlTable("scenarios", {
   title: varchar("title", { length: 255 }).notNull(),
   category: varchar("category", { length: 100 }).notNull(),
   difficulty: mysqlEnum("difficulty", ["beginner", "intermediate", "advanced"]).notNull(),
+  mode: mysqlEnum("mode", ["receptionist", "clinician"]).default("receptionist").notNull(),
+  clinicalSystem: varchar("clinicalSystem", { length: 100 }),
   description: text("description").notNull(),
   patientPersona: text("patientPersona").notNull(),
   learningObjectives: json("learningObjectives").$type<string[]>().notNull(),

@@ -6,10 +6,10 @@ import { cn } from "@/lib/utils";
 import { Link } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   ShieldCheck, Users, BarChart3, TrendingUp, BookOpen,
-  Calendar, Clock, ChevronRight, Star, Award
+  Calendar, Clock, ChevronRight, Star, Award, PhoneCall, Stethoscope, Filter
 } from "lucide-react";
 
 const COMPETENCIES = [
@@ -51,9 +51,14 @@ export default function Admin() {
     }
   }, [user, loading, navigate]);
 
+  const [sessionModeFilter, setSessionModeFilter] = useState<"all" | "receptionist" | "clinician">("all");
   const { data: teamStats, isLoading: statsLoading } = trpc.admin.teamStats.useQuery();
   const { data: allSessions, isLoading: sessionsLoading } = trpc.admin.allSessions.useQuery();
   const { data: allUsers, isLoading: usersLoading } = trpc.admin.allUsers.useQuery();
+
+  const filteredSessions = allSessions?.filter(s =>
+    sessionModeFilter === "all" || s.scenario?.mode === sessionModeFilter
+  );
 
   if (loading || user?.role !== "admin") {
     return (
@@ -206,19 +211,40 @@ export default function Admin() {
 
           {/* Recent sessions */}
           <div className="lg:col-span-2 bg-card rounded-xl border border-border card-shadow p-6">
-            <h2 className="text-base font-semibold text-foreground mb-4 flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-primary" />
-              Recent Sessions
-            </h2>
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+              <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-primary" />
+                Recent Sessions
+              </h2>
+              <div className="flex gap-1.5">
+                {(["all", "receptionist", "clinician"] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setSessionModeFilter(m)}
+                    className={cn(
+                      "flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-all border",
+                      sessionModeFilter === m
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-card text-muted-foreground border-border hover:border-primary/40"
+                    )}
+                  >
+                    {m === "all" && <Filter className="w-3 h-3" />}
+                    {m === "receptionist" && <PhoneCall className="w-3 h-3" />}
+                    {m === "clinician" && <Stethoscope className="w-3 h-3" />}
+                    {m === "all" ? `All (${allSessions?.length ?? 0})` : m === "receptionist" ? `Rec (${allSessions?.filter(s => s.scenario?.mode === "receptionist").length ?? 0})` : `Clin (${allSessions?.filter(s => s.scenario?.mode === "clinician").length ?? 0})`}
+                  </button>
+                ))}
+              </div>
+            </div>
             {sessionsLoading ? (
               <div className="space-y-3">
                 {[1, 2, 3, 4].map(i => <div key={i} className="h-14 bg-muted rounded-lg animate-pulse" />)}
               </div>
-            ) : allSessions?.length === 0 ? (
+            ) : filteredSessions?.length === 0 ? (
               <p className="text-sm text-muted-foreground">No sessions recorded yet.</p>
             ) : (
               <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                {allSessions?.slice(0, 20).map((s) => (
+                {filteredSessions?.slice(0, 20).map((s) => (
                   <div key={s.id} className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-secondary/30 transition-colors flex-wrap">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -234,6 +260,16 @@ export default function Admin() {
                         >
                           {s.status}
                         </Badge>
+                        {s.scenario?.mode === "receptionist" && (
+                          <Badge variant="outline" className="text-xs shrink-0 border-blue-200 text-blue-700 bg-blue-50 flex items-center gap-1">
+                            <PhoneCall className="w-3 h-3" /> Rec
+                          </Badge>
+                        )}
+                        {s.scenario?.mode === "clinician" && (
+                          <Badge variant="outline" className="text-xs shrink-0 border-purple-200 text-purple-700 bg-purple-50 flex items-center gap-1">
+                            <Stethoscope className="w-3 h-3" /> Clin
+                          </Badge>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5 flex-wrap">
                         <span>{(s as any).user?.name ?? "Unknown staff"}</span>

@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Link } from "wouter";
+import { useState } from "react";
 import {
   TrendingUp, BookOpen, Award, Clock, ChevronRight,
-  BarChart3, Calendar, Flame, Target
+  BarChart3, Calendar, Flame, Target, PhoneCall, Stethoscope
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -43,8 +44,14 @@ function formatDuration(s: number | null) {
 
 export default function History() {
   const { data: history, isLoading } = trpc.sessions.myHistory.useQuery();
+  const [modeFilter, setModeFilter] = useState<"all" | "receptionist" | "clinician">("all");
 
-  const completedSessions = history?.filter(s => s.status === "completed" && s.score) ?? [];
+  const allCompleted = history?.filter(s => s.status === "completed" && s.score) ?? [];
+  const completedSessions = modeFilter === "all"
+    ? allCompleted
+    : allCompleted.filter(s => s.scenario?.mode === modeFilter);
+  const receptionistCount = allCompleted.filter(s => s.scenario?.mode === "receptionist").length;
+  const clinicianCount = allCompleted.filter(s => s.scenario?.mode === "clinician").length;
   const sortedByDate = [...completedSessions].sort((a, b) =>
     new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime()
   );
@@ -107,7 +114,7 @@ export default function History() {
     <AppLayout>
       <div className="container py-10">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
           <div>
             <h1 className="text-3xl font-bold text-foreground mb-1">My Progress</h1>
             <p className="text-muted-foreground">Track your development across all training sessions.</p>
@@ -118,6 +125,27 @@ export default function History() {
               Start New Session
             </Link>
           </Button>
+        </div>
+
+        {/* Mode filter tabs */}
+        <div className="flex gap-2 mb-8 flex-wrap">
+          {(["all", "receptionist", "clinician"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setModeFilter(m)}
+              className={cn(
+                "flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all border",
+                modeFilter === m
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-card text-muted-foreground border-border hover:border-primary/40"
+              )}
+            >
+              {m === "all" && <BookOpen className="w-3.5 h-3.5" />}
+              {m === "receptionist" && <PhoneCall className="w-3.5 h-3.5" />}
+              {m === "clinician" && <Stethoscope className="w-3.5 h-3.5" />}
+              {m === "all" ? `All (${allCompleted.length})` : m === "receptionist" ? `Receptionist (${receptionistCount})` : `Clinician (${clinicianCount})`}
+            </button>
+          ))}
         </div>
 
         {isLoading ? (
@@ -274,7 +302,7 @@ export default function History() {
                     Session History
                   </h2>
                   <div className="space-y-3">
-                    {history?.map((s) => (
+                    {history?.filter(s => modeFilter === "all" || s.scenario?.mode === modeFilter).map((s) => (
                       <div key={s.id} className="bg-card rounded-xl border border-border shadow-sm p-5 flex items-center gap-4 flex-wrap">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -289,6 +317,16 @@ export default function History() {
                             >
                               {s.status}
                             </Badge>
+                            {s.scenario?.mode === "receptionist" && (
+                              <Badge variant="outline" className="text-xs shrink-0 border-blue-200 text-blue-700 bg-blue-50 flex items-center gap-1">
+                                <PhoneCall className="w-3 h-3" /> Receptionist
+                              </Badge>
+                            )}
+                            {s.scenario?.mode === "clinician" && (
+                              <Badge variant="outline" className="text-xs shrink-0 border-purple-200 text-purple-700 bg-purple-50 flex items-center gap-1">
+                                <Stethoscope className="w-3 h-3" /> Clinician
+                              </Badge>
+                            )}
                           </div>
                           <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                             <span className="flex items-center gap-1">

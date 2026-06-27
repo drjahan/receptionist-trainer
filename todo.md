@@ -47,3 +47,56 @@
 - [ ] Add bar chart comparing average score per competency across all sessions
 - [ ] Add session stats: total sessions, streak counter, most improved competency
 - [ ] Push all Phase 1 changes to GitHub and redeploy to Railway
+
+## Weekend Sprint — Full Roadmap
+
+### Phase 1: DGX Chunking
+- [ ] Dispatch DGX chunking for 18 NICE guidelines
+- [ ] Dispatch DGX chunking for SIGN (Scottish) guidelines
+- [ ] Dispatch DGX chunking for BTS (British Thoracic Society) guidelines
+- [ ] Dispatch DGX chunking for RCGP curriculum and MRCGP exam scenarios
+- [ ] Ingest all new chunks into pgvector on Railway
+
+### Phase 2: Microphone Fix
+- [x] Fix microphone button using Web Speech API (browser-native, works on mobile/slow devices)
+- [x] Show live transcript as user speaks
+- [x] Auto-send transcript on speech end with manual override
+- [x] Graceful fallback if browser does not support Web Speech API
+
+### Phase 3: 100+ New Scenarios
+- [x] 30 acute presentation scenarios (NICE, SIGN, BTS)
+- [x] 25 chronic disease management scenarios
+- [x] 15 multimorbidity/CVRM scenarios
+- [x] MRCGP/CSA-style exam scenarios
+- [x] Scottish guidelines (SIGN) scenarios
+- [x] BTS respiratory scenarios
+- [x] Update scenario seeding in routers.ts (105 total scenarios)
+- [x] Add mode (receptionist/clinician) and clinicalSystem fields to schema
+- [x] Add mode filter tabs to Scenarios page
+- [x] Add clinical system filter to Scenarios page
+
+### Phase 4: TTS Patient Voice
+- [x] Auto-play patient response audio using browser Web Speech API (speechSynthesis)
+- [x] British English voice preference (en-GB)
+- [x] Add mute/unmute toggle in roleplay UI
+- [ ] DGX XTTS-v2 upgrade (future - requires DGX API endpoint)
+
+### Phase 5: Static Scenario Avatars
+- [ ] Generate age/gender-matched avatar per scenario via DGX
+- [ ] Store avatar URLs in scenarios table
+- [ ] Display avatar in roleplay UI
+
+### Phase 6: Progress Dashboard & Admin Panel
+- [x] Learner history page with scores and grades
+- [x] Mode filter tabs (Receptionist/Clinician) on History page
+- [x] Mode badges on session history items
+- [x] Admin panel for Dr Jahan (view all learner scores)
+- [x] Mode filter tabs on Admin sessions panel
+- [x] Role-based access: admin role for Dr Jahan
+- [ ] Domain heatmap showing weakest RCGP domains (future)
+
+### Phase 7: Deploy & Verify
+- [x] Push all changes to GitHub
+- [ ] Verify Railway deployment
+- [ ] Run end-to-end smoke test
+- [ ] Deliver final status report
