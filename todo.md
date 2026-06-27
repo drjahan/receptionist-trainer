@@ -110,3 +110,22 @@
 - [x] Add googleReviewOffer column to scores table (DB migration applied)
 - [x] Update Scorecard.tsx to display Google Review Offer as 6th competency
 - [x] Google Review URL: https://g.page/r/CemedDs5bp4FEBM/review
+
+### Pharmacist Tier (added 27 Jun 2026)
+- [ ] Scrape Flexylen Scribe rule library (all rule IDs, trigger conditions, citations)
+- [x] Add 'pharmacist' to mode enum in schema + DB migration (0004_scenarios_mode_pharmacist)
+- [x] Add 25 pharmacist roleplay scenarios (structured medication reviews, DMARD, anticoagulation, NMS, STOPP/START, MHRA alerts, Pharmacy First)
+- [x] Add GPhC-aligned competency scoring (6 competencies for pharmacist mode: Listening, Medication Review Quality, Clinical Safety, Communication, Deprescribing, Google Review)
+- [x] Build pre-consultation crib sheet generator page (/crib-sheet/:scenarioId)
+- [x] Add cribSheet.generate tRPC procedure (pharmacist/GP/receptionist mode-specific prompts)
+- [x] Add 'Prep Crib Sheet First' button to every scenario card in Scenarios page
+- [ ] Implement rule-based engine (STOPP/START v3, MHRA drug safety alerts, NICE monitoring, BNF interactions)
+- [ ] Add per-drug review generator (adherence, efficacy, side effects, monitoring)
+- [ ] Add deprescribing suggestions (STOPP/START v3 criteria)
+- [ ] Add evidence citations (BNF, NICE CKS, SPS, MHRA DSU, emc, Renal Drug DB)
+- [ ] Add governance audit log page (/audit-log)
+- [ ] Add CPD/revalidation draft generator (GPhC-aligned)
+- [x] Update Scenarios page to show Pharmacist tab alongside Receptionist and GP
+- [x] Update History page to show Pharmacist mode stats
+- [x] Update Admin panel to show Pharmacist sessions
+- [x] Rename 'Clinician' mode to 'GP' throughout the codebase (DB migration + frontend)

@@ -80,6 +80,19 @@ const migrations = [
     ],
   },
   {
+    name: "0004_scenarios_mode_pharmacist",
+    statements: [
+      // Step 1: Expand the enum to include all old + new values so UPDATE can succeed
+      `ALTER TABLE \`scenarios\` MODIFY COLUMN \`mode\` enum('receptionist','clinician','gp','pharmacist') NOT NULL DEFAULT 'receptionist'`,
+      // Step 2: Migrate 'clinician' rows to 'gp'
+      `UPDATE \`scenarios\` SET \`mode\` = 'gp' WHERE \`mode\` = 'clinician'`,
+      // Step 3: Narrow enum to final values only
+      `ALTER TABLE \`scenarios\` MODIFY COLUMN \`mode\` enum('receptionist','gp','pharmacist') NOT NULL DEFAULT 'receptionist'`,
+      // Add googleReviewOffer column to scores if it doesn't exist yet
+      `ALTER TABLE \`scores\` ADD COLUMN IF NOT EXISTS \`googleReviewOffer\` float NOT NULL DEFAULT 0`,
+    ],
+  },
+  {
     name: "0003_force_sessions",
     statements: [
       `CREATE TABLE IF NOT EXISTS \`sessions\` (

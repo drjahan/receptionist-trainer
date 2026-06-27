@@ -8,7 +8,7 @@ import { useLocation } from "wouter";
 import {
   Clock, ChevronRight, Lock, AlertCircle, Zap, BookOpen,
   Stethoscope, PhoneCall, Heart, Brain, Baby, Activity,
-  Pill, Users, Search, Filter
+  Pill, Users, Search, Filter, FileText
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -27,11 +27,17 @@ const modeConfig = {
     className: "bg-blue-50 text-blue-700 border-blue-200",
     description: "Telephone triage, appointment management, de-escalation, signposting",
   },
-  clinician: {
-    label: "Clinician",
+  gp: {
+    label: "GP",
     icon: <Stethoscope className="w-3.5 h-3.5" />,
     className: "bg-purple-50 text-purple-700 border-purple-200",
     description: "Clinical consultations, diagnosis, management, MRCGP/CSA-style cases",
+  },
+  pharmacist: {
+    label: "Pharmacist",
+    icon: <Pill className="w-3.5 h-3.5" />,
+    className: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    description: "Structured medication reviews, STOPP/START, MHRA alerts, NMS, polypharmacy",
   },
 };
 
@@ -68,7 +74,7 @@ const categoryIcons: Record<string, React.ReactNode> = {
   "Referrals & Secondary Care": <ChevronRight className="w-4 h-4" />,
 };
 
-type Mode = "all" | "receptionist" | "clinician";
+type Mode = "all" | "receptionist" | "gp" | "pharmacist";
 
 export default function Scenarios() {
   const { isAuthenticated, loading } = useAuth();
@@ -129,7 +135,8 @@ export default function Scenarios() {
 
   const totalCount = scenarios?.length ?? 0;
   const receptionistCount = scenarios?.filter((s) => s.mode === "receptionist").length ?? 0;
-  const clinicianCount = scenarios?.filter((s) => s.mode === "clinician").length ?? 0;
+  const gpCount = scenarios?.filter((s) => s.mode === "gp").length ?? 0;
+  const pharmacistCount = scenarios?.filter((s) => s.mode === "pharmacist").length ?? 0;
 
   return (
     <AppLayout>
@@ -157,9 +164,9 @@ export default function Scenarios() {
 
         {/* Mode selector */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          {(["all", "receptionist", "clinician"] as Mode[]).map((mode) => {
+          {(["all", "receptionist", "gp", "pharmacist"] as Mode[]).map((mode) => {
             const isActive = activeMode === mode;
-            const count = mode === "all" ? totalCount : mode === "receptionist" ? receptionistCount : clinicianCount;
+            const count = mode === "all" ? totalCount : mode === "receptionist" ? receptionistCount : mode === "gp" ? gpCount : pharmacistCount;
             return (
               <button
                 key={mode}
@@ -176,8 +183,10 @@ export default function Scenarios() {
                     <BookOpen className="w-4 h-4 text-primary" />
                   ) : mode === "receptionist" ? (
                     <PhoneCall className="w-4 h-4 text-blue-600" />
-                  ) : (
+                  ) : mode === "gp" ? (
                     <Stethoscope className="w-4 h-4 text-purple-600" />
+                  ) : (
+                    <Pill className="w-4 h-4 text-emerald-600" />
                   )}
                   <span className={cn("font-semibold text-sm", isActive ? "text-primary" : "text-foreground")}>
                     {mode === "all" ? "All Scenarios" : modeConfig[mode].label}
@@ -208,7 +217,7 @@ export default function Scenarios() {
               className="w-full pl-9 pr-4 py-2 text-sm border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
             />
           </div>
-          {(activeMode === "clinician" || activeMode === "all") && clinicalSystems.length > 0 && (
+          {(activeMode === "gp" || activeMode === "all") && clinicalSystems.length > 0 && (
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-muted-foreground" />
               <select
@@ -309,7 +318,7 @@ export default function Scenarios() {
                             </div>
                           )}
                         </div>
-                        <div className="px-6 pb-5">
+                        <div className="px-6 pb-5 space-y-2">
                           <Button
                             className="w-full"
                             onClick={() => handleStart(scenario.id)}
@@ -323,6 +332,14 @@ export default function Scenarios() {
                                   <ChevronRight className="w-4 h-4 ml-1" />
                                 </>
                               )}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="w-full text-slate-600 hover:text-blue-700 hover:border-blue-400"
+                            onClick={() => navigate(`/crib-sheet/${scenario.id}`)}
+                          >
+                            <FileText className="w-4 h-4 mr-1.5" />
+                            Prep Crib Sheet First
                           </Button>
                         </div>
                       </div>

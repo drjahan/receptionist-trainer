@@ -4,7 +4,7 @@ import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { invokeLLM } from "./_core/llm";
 import { retrieveRelevantPolicies, formatPolicyContext, getVectorDbStats } from "./vectorSearch";
-import { ALL_SCENARIOS } from "./scenarioSeeds";
+import { ALL_SCENARIOS_V2 as ALL_SCENARIOS } from "./scenarioSeeds";
 import {
   getAllScenarios,
   getScenarioById,
@@ -252,7 +252,10 @@ export const appRouter = router({
         const history = await getMessagesBySessionId(input.sessionId);
 
         // Build mode-specific system prompt
-        const isClinicianMode = (scenario.mode as string) === "clinician";
+        const chatMode = (scenario.mode as string);
+        const isClinicianMode = chatMode === "gp";
+        const isPharmacistMode = chatMode === "pharmacist";
+        const googleReviewInstruction = `- IMPORTANT — Google Review: If the staff member offers you a personalised Google Review link at the end of the consultation and mentions their name (e.g. "If you were happy with the service today, I'd really appreciate it if you could leave us a Google review — here is the link: https://g.page/r/CemedDs5bp4FEBM/review — and if you mention my name, [name], you'll receive a £5 Amazon voucher as a thank you"), respond warmly and positively. If they do NOT offer this at the end, do not bring it up yourself — but the assessor will note the omission.`;
         const systemPrompt = isClinicianMode
           ? `${scenario.patientPersona}
 
@@ -264,7 +267,21 @@ IMPORTANT INSTRUCTIONS:
 - Do not give medical advice, diagnoses, or suggest treatments to the clinician.
 - React authentically to the clinician's approach — if they use ICE (ideas, concerns, expectations) and are empathetic, open up more; if they are dismissive or miss cues, be less forthcoming.
 - If the clinician asks a direct question, answer it honestly as the patient would.
-- Hidden cues should only be revealed if the clinician asks the right questions.`
+- Hidden cues should only be revealed if the clinician asks the right questions.
+${googleReviewInstruction}`
+          : isPharmacistMode
+          ? `${scenario.patientPersona}
+
+IMPORTANT INSTRUCTIONS:
+- You are playing the patient character described above in a pharmacist consultation simulation.
+- Respond naturally as this patient would in a real pharmacy or GP surgery pharmacist consultation.
+- Keep responses realistic and conversational (2-5 sentences). Do not volunteer all information at once.
+- Do not break character or acknowledge that this is a training exercise.
+- Do not give medical advice, diagnoses, or suggest treatments to the pharmacist.
+- React authentically to the pharmacist's approach — if they are empathetic, explain things clearly, and address your concerns, open up more; if they are dismissive or use jargon, be less forthcoming or more anxious.
+- If the pharmacist asks a direct question, answer it honestly as the patient would.
+- Show realistic patient concerns about medication changes, side effects, or stopping tablets.
+${googleReviewInstruction}`
           : `${scenario.patientPersona}
 
 IMPORTANT INSTRUCTIONS:
@@ -274,7 +291,7 @@ IMPORTANT INSTRUCTIONS:
 - Do not break character or acknowledge that this is a training exercise.
 - Do not give medical advice or diagnoses.
 - React authentically to how the receptionist handles the call — if they are empathetic and follow good practice, respond positively; if they are dismissive or make errors, react as the patient naturally would.
-- IMPORTANT — Google Review: If the receptionist offers you a Google Review link at the end of the call and mentions their name (e.g. "If you were happy with the service today, I'd really appreciate it if you could leave us a Google review — here is the link: https://g.page/r/CemedDs5bp4FEBM/review — and if you mention my name, [name], you'll receive a £5 Amazon voucher as a thank you"), respond warmly and positively — say something like "Oh that's lovely, thank you, I'll do that." If they do NOT offer this at the end, do not bring it up yourself — but the assessor will note the omission.`;
+${googleReviewInstruction}`;
 
         // Build messages for LLM
         const llmMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
@@ -315,22 +332,47 @@ IMPORTANT INSTRUCTIONS:
         const history = await getMessagesBySessionId(input.sessionId);
         if (history.length < 2) throw new TRPCError({ code: "BAD_REQUEST", message: "Not enough conversation to evaluate" });
 
-        const isClinicianEval = (scenario.mode as string) === "clinician";
-        const speakerLabel = isClinicianEval ? "CLINICIAN" : "RECEPTIONIST";
+        const scenarioMode = (scenario.mode as string);
+        const isClinicianEval = scenarioMode === "gp";
+        const isPharmacistEval = scenarioMode === "pharmacist";
+        const speakerLabel = isClinicianEval ? "CLINICIAN" : isPharmacistEval ? "PHARMACIST" : "RECEPTIONIST";
         const transcript = history.map(m => `${m.role === "user" ? speakerLabel : "PATIENT"}: ${m.content}`).join("\n");
 
-        // ─── RAG: Retrieve relevant policy chunks ──────────────────────
+        // ─── RAG: Retrieve relevant policy chunks ──────────────
         const ragQuery = `${scenario.title}: ${scenario.description}. ${history.slice(0, 4).map(m => m.content).join(" ")}`;
         const policyChunks = await retrieveRelevantPolicies(ragQuery, {
           topK: 4,
-          category: isClinicianEval ? "clinical" : "non-clinical",
+          category: isClinicianEval || isPharmacistEval ? "clinical" : "non-clinical",
           minSimilarity: 0.25,
         });
         const policyContext = formatPolicyContext(policyChunks);
         const policySection = policyContext ? `\n\n${policyContext}\n` : "";
 
-        // ─── Build mode-specific evaluation prompt ─────────────────────────────
-        const evaluationSystemPrompt = isClinicianEval
+        // ─── Build mode-specific evaluation prompt ─────────────────────
+        const evaluationSystemPrompt = isPharmacistEval
+          ? `You are an experienced clinical pharmacist trainer and GPhC assessor evaluating a pharmacist's performance in a simulated patient consultation. Be fair, constructive, and specific.
+
+The scenario was: "${scenario.title}" — ${scenario.description}${policySection}
+Learning objectives: ${scenario.learningObjectives.join("; ")}
+
+Evaluate the pharmacist's performance across exactly these six competencies, scoring each from 1.0 to 5.0 (decimals allowed):
+
+1. Active Listening and Empathy — Did the pharmacist demonstrate patient-centred communication, acknowledge concerns, and build rapport? Did they use open questions and check understanding?
+2. Medication Review Quality — Was the medication review systematic and thorough? Did they apply STOPP/START criteria, identify drug interactions, check monitoring requirements, and address adherence?
+3. Clinical Safety and Governance — Did the pharmacist identify and act on safety issues (MHRA alerts, contraindications, toxicity signs, monitoring gaps)? Were escalation decisions appropriate?
+4. Communication Clarity — Were explanations clear, jargon-free, and tailored to the patient? Was shared decision-making used for any medication changes?
+5. Deprescribing and Optimisation — Did the pharmacist identify opportunities to deprescribe, simplify the regimen, or switch to safer alternatives where appropriate?
+6. Google Review Offer — Did the staff member offer the patient a personalised Google Review link at the end of the consultation, mentioning their own name and the £5 Amazon voucher incentive? This is a mandatory practice requirement for all GP Pathfinder Clinics staff worldwide. Score 5.0 if they offered it clearly with their name; 3.0 if they offered it without their name; 1.0 if they did not offer it at all. Review link: https://g.page/r/CemedDs5bp4FEBM/review
+
+Scoring guide:
+1.0-2.0: Unsafe or significantly below GPhC standard — patient at risk
+2.1-3.0: Below standard — significant gaps in pharmaceutical knowledge or skills
+3.1-3.9: Competent — meets minimum GPhC standard with room to improve
+4.0-4.5: Good — above standard, minor gaps only
+4.6-5.0: Excellent — advanced clinical pharmacist standard
+
+Return your assessment as JSON.`
+          : isClinicianEval
           ? `You are an experienced GP trainer and MRCGP examiner evaluating a GP clinician's performance in a simulated patient consultation. Be fair, constructive, and specific.
 
 The scenario was: "${scenario.title}" — ${scenario.description}${policySection}
@@ -374,7 +416,9 @@ Scoring guide:
 
 Return your assessment as JSON.`;
 
-        const evaluationUserPrompt = isClinicianEval
+        const evaluationUserPrompt = isPharmacistEval
+          ? `Here is the full transcript of the pharmacist consultation:\n\n${transcript}\n\nPlease evaluate the pharmacist's performance.`
+          : isClinicianEval
           ? `Here is the full transcript of the consultation:\n\n${transcript}\n\nPlease evaluate the clinician's performance.`
           : `Here is the full transcript of the call:\n\n${transcript}\n\nPlease evaluate the receptionist's performance.`;
 
@@ -555,6 +599,80 @@ Return your assessment as JSON.`;
         avgDeEscalation: avg("deEscalation"),
       };
     }),
+  }),
+
+  // ─── Crib Sheet Generator ─────────────────────────────────────────────────────────────────────────
+  cribSheet: router({
+    generate: protectedProcedure
+      .input(z.object({ scenarioId: z.number() }))
+      .mutation(async ({ input }) => {
+        const scenario = await getScenarioById(input.scenarioId);
+        if (!scenario) throw new TRPCError({ code: "NOT_FOUND", message: "Scenario not found" });
+
+        const isPharmacist = (scenario.mode as string) === "pharmacist";
+        const isGP = (scenario.mode as string) === "gp";
+
+        const systemPrompt = isPharmacist
+          ? `You are an expert clinical pharmacist trainer. Generate a concise, structured pre-consultation crib sheet for a pharmacist about to role-play the following scenario. The crib sheet should help the pharmacist prepare for the consultation and remember key clinical points.
+
+Format the response as a JSON object with these exact fields:
+- scenarioSummary: string (2-3 sentences describing the scenario and key challenge)
+- keyMedications: array of objects with { name: string, indication: string, keyPoints: string[] }
+- relevantGuidelines: array of objects with { name: string, keyPoints: string[] }
+- redFlags: string[] (safety issues to watch for)
+- communicationTips: string[] (patient-centred communication advice for this specific patient)
+- checklistItems: string[] (things to cover before ending the consultation)
+- googleReviewReminder: string (reminder to offer Google Review with name and £5 voucher)`
+          : isGP
+          ? `You are an expert GP trainer and MRCGP examiner. Generate a concise, structured pre-consultation crib sheet for a GP about to role-play the following scenario. The crib sheet should help the GP prepare for the consultation and remember key clinical points.
+
+Format the response as a JSON object with these exact fields:
+- scenarioSummary: string (2-3 sentences describing the scenario and key challenge)
+- differentialDiagnosis: string[] (top 3-5 differentials to consider)
+- relevantGuidelines: array of objects with { name: string, keyPoints: string[] }
+- redFlags: string[] (red flags to actively exclude)
+- iceFramework: object with { ideas: string, concerns: string, expectations: string } (likely patient ICE for this scenario)
+- communicationTips: string[] (communication advice for this specific patient)
+- checklistItems: string[] (things to cover before ending the consultation)
+- googleReviewReminder: string (reminder to offer Google Review with name and £5 voucher)`
+          : `You are an expert GP surgery trainer. Generate a concise, structured pre-consultation crib sheet for a receptionist about to role-play the following scenario.
+
+Format the response as a JSON object with these exact fields:
+- scenarioSummary: string (2-3 sentences describing the scenario and key challenge)
+- relevantPolicies: array of objects with { name: string, keyPoints: string[] }
+- redFlags: string[] (red flags requiring urgent escalation)
+- communicationTips: string[] (communication advice for this specific patient)
+- checklistItems: string[] (things to cover before ending the call)
+- googleReviewReminder: string (reminder to offer Google Review with name and £5 voucher)`;
+
+        const userPrompt = `Scenario: ${scenario.title}
+Mode: ${scenario.mode}
+Category: ${scenario.category}
+Difficulty: ${scenario.difficulty}
+Description: ${scenario.description}
+Patient Persona: ${scenario.patientPersona}
+Learning Objectives: ${scenario.learningObjectives.join("; ")}
+Tags: ${scenario.tags.join(", ")}`;
+
+        const response = await invokeLLM({
+          model: process.env.LLM_MODEL || "gpt-4o-mini",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          response_format: { type: "json_object" },
+        });
+
+        const raw = response.choices[0]?.message?.content as string | undefined;
+        if (!raw) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to generate crib sheet" });
+
+        return {
+          scenarioId: scenario.id,
+          scenarioTitle: scenario.title,
+          mode: scenario.mode,
+          cribSheet: JSON.parse(raw),
+        };
+      }),
   }),
 });
 

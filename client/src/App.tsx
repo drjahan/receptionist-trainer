@@ -11,6 +11,7 @@ import Scorecard from "./pages/Scorecard";
 import History from "./pages/History";
 import Admin from "./pages/Admin";
 import Login from "./pages/Login";
+import CribSheet from "./pages/CribSheet";
 import { useAuth } from "./_core/hooks/useAuth";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -43,6 +44,7 @@ function Router() {
       <Route path="/" component={() => <ProtectedRoute component={Home} />} />
       <Route path="/scenarios" component={() => <ProtectedRoute component={Scenarios} />} />
       <Route path="/roleplay/:sessionId" component={() => <ProtectedRoute component={Roleplay} />} />
+      <Route path="/crib-sheet/:scenarioId" component={() => <ProtectedRoute component={CribSheet} />} />
       <Route path="/scorecard/:sessionId" component={() => <ProtectedRoute component={Scorecard} />} />
       <Route path="/history" component={() => <ProtectedRoute component={History} />} />
       <Route path="/admin" component={() => <ProtectedRoute component={Admin} />} />

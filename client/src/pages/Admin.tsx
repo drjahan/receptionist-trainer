@@ -9,7 +9,7 @@ import { useLocation } from "wouter";
 import { useEffect, useState } from "react";
 import {
   ShieldCheck, Users, BarChart3, TrendingUp, BookOpen,
-  Calendar, Clock, ChevronRight, Star, Award, PhoneCall, Stethoscope, Filter
+  Calendar, Clock, ChevronRight, Star, Award, PhoneCall, Stethoscope, Filter, Pill
 } from "lucide-react";
 
 const COMPETENCIES = [
@@ -51,7 +51,7 @@ export default function Admin() {
     }
   }, [user, loading, navigate]);
 
-  const [sessionModeFilter, setSessionModeFilter] = useState<"all" | "receptionist" | "clinician">("all");
+  const [sessionModeFilter, setSessionModeFilter] = useState<"all" | "receptionist" | "gp" | "pharmacist">("all");
   const { data: teamStats, isLoading: statsLoading } = trpc.admin.teamStats.useQuery();
   const { data: allSessions, isLoading: sessionsLoading } = trpc.admin.allSessions.useQuery();
   const { data: allUsers, isLoading: usersLoading } = trpc.admin.allUsers.useQuery();
@@ -217,7 +217,7 @@ export default function Admin() {
                 Recent Sessions
               </h2>
               <div className="flex gap-1.5">
-                {(["all", "receptionist", "clinician"] as const).map((m) => (
+                {(["all", "receptionist", "gp", "pharmacist"] as const).map((m) => (
                   <button
                     key={m}
                     onClick={() => setSessionModeFilter(m)}
@@ -230,8 +230,9 @@ export default function Admin() {
                   >
                     {m === "all" && <Filter className="w-3 h-3" />}
                     {m === "receptionist" && <PhoneCall className="w-3 h-3" />}
-                    {m === "clinician" && <Stethoscope className="w-3 h-3" />}
-                    {m === "all" ? `All (${allSessions?.length ?? 0})` : m === "receptionist" ? `Rec (${allSessions?.filter(s => s.scenario?.mode === "receptionist").length ?? 0})` : `Clin (${allSessions?.filter(s => s.scenario?.mode === "clinician").length ?? 0})`}
+                    {m === "gp" && <Stethoscope className="w-3 h-3" />}
+                    {m === "pharmacist" && <Pill className="w-3 h-3" />}
+                    {m === "all" ? `All (${allSessions?.length ?? 0})` : m === "receptionist" ? `Rec (${allSessions?.filter(s => s.scenario?.mode === "receptionist").length ?? 0})` : m === "gp" ? `GP (${allSessions?.filter(s => s.scenario?.mode === "gp").length ?? 0})` : `Pharm (${allSessions?.filter(s => s.scenario?.mode === "pharmacist").length ?? 0})`}
                   </button>
                 ))}
               </div>
@@ -265,9 +266,14 @@ export default function Admin() {
                             <PhoneCall className="w-3 h-3" /> Rec
                           </Badge>
                         )}
-                        {s.scenario?.mode === "clinician" && (
+                        {s.scenario?.mode === "gp" && (
                           <Badge variant="outline" className="text-xs shrink-0 border-purple-200 text-purple-700 bg-purple-50 flex items-center gap-1">
-                            <Stethoscope className="w-3 h-3" /> Clin
+                            <Stethoscope className="w-3 h-3" /> GP
+                          </Badge>
+                        )}
+                        {s.scenario?.mode === "pharmacist" && (
+                          <Badge variant="outline" className="text-xs shrink-0 border-emerald-200 text-emerald-700 bg-emerald-50 flex items-center gap-1">
+                            <Pill className="w-3 h-3" /> Pharm
                           </Badge>
                         )}
                       </div>

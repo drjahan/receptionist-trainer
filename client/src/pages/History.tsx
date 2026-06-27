@@ -7,7 +7,7 @@ import { Link } from "wouter";
 import { useState } from "react";
 import {
   TrendingUp, BookOpen, Award, Clock, ChevronRight,
-  BarChart3, Calendar, Flame, Target, PhoneCall, Stethoscope
+  BarChart3, Calendar, Flame, Target, PhoneCall, Stethoscope, Pill
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -44,14 +44,15 @@ function formatDuration(s: number | null) {
 
 export default function History() {
   const { data: history, isLoading } = trpc.sessions.myHistory.useQuery();
-  const [modeFilter, setModeFilter] = useState<"all" | "receptionist" | "clinician">("all");
+  const [modeFilter, setModeFilter] = useState<"all" | "receptionist" | "gp" | "pharmacist">("all");
 
   const allCompleted = history?.filter(s => s.status === "completed" && s.score) ?? [];
   const completedSessions = modeFilter === "all"
     ? allCompleted
     : allCompleted.filter(s => s.scenario?.mode === modeFilter);
   const receptionistCount = allCompleted.filter(s => s.scenario?.mode === "receptionist").length;
-  const clinicianCount = allCompleted.filter(s => s.scenario?.mode === "clinician").length;
+  const gpCount = allCompleted.filter(s => s.scenario?.mode === "gp").length;
+  const pharmacistCount = allCompleted.filter(s => s.scenario?.mode === "pharmacist").length;
   const sortedByDate = [...completedSessions].sort((a, b) =>
     new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime()
   );
@@ -129,7 +130,7 @@ export default function History() {
 
         {/* Mode filter tabs */}
         <div className="flex gap-2 mb-8 flex-wrap">
-          {(["all", "receptionist", "clinician"] as const).map((m) => (
+          {(["all", "receptionist", "gp", "pharmacist"] as const).map((m) => (
             <button
               key={m}
               onClick={() => setModeFilter(m)}
@@ -142,8 +143,9 @@ export default function History() {
             >
               {m === "all" && <BookOpen className="w-3.5 h-3.5" />}
               {m === "receptionist" && <PhoneCall className="w-3.5 h-3.5" />}
-              {m === "clinician" && <Stethoscope className="w-3.5 h-3.5" />}
-              {m === "all" ? `All (${allCompleted.length})` : m === "receptionist" ? `Receptionist (${receptionistCount})` : `Clinician (${clinicianCount})`}
+              {m === "gp" && <Stethoscope className="w-3.5 h-3.5" />}
+              {m === "pharmacist" && <Pill className="w-3.5 h-3.5" />}
+              {m === "all" ? `All (${allCompleted.length})` : m === "receptionist" ? `Receptionist (${receptionistCount})` : m === "gp" ? `GP (${gpCount})` : `Pharmacist (${pharmacistCount})`}
             </button>
           ))}
         </div>
@@ -322,9 +324,14 @@ export default function History() {
                                 <PhoneCall className="w-3 h-3" /> Receptionist
                               </Badge>
                             )}
-                            {s.scenario?.mode === "clinician" && (
+                            {s.scenario?.mode === "gp" && (
                               <Badge variant="outline" className="text-xs shrink-0 border-purple-200 text-purple-700 bg-purple-50 flex items-center gap-1">
-                                <Stethoscope className="w-3 h-3" /> Clinician
+                                <Stethoscope className="w-3 h-3" /> GP
+                              </Badge>
+                            )}
+                            {s.scenario?.mode === "pharmacist" && (
+                              <Badge variant="outline" className="text-xs shrink-0 border-emerald-200 text-emerald-700 bg-emerald-50 flex items-center gap-1">
+                                <Pill className="w-3 h-3" /> Pharmacist
                               </Badge>
                             )}
                           </div>
