@@ -17,6 +17,7 @@ const COMPETENCIES = [
   { key: "policyAdherence", label: "Policy Adherence", short: "Policy" },
   { key: "communicationClarity", label: "Communication Clarity", short: "Clarity" },
   { key: "deEscalation", label: "De-escalation", short: "De-escalation" },
+  { key: "googleReviewOffer", label: "Google Review Offer", short: "Review" },
 ] as const;
 
 const GRADE_CONFIG: Record<string, { bg: string; text: string; ring: string; label: string }> = {

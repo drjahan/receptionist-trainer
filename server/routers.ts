@@ -273,7 +273,8 @@ IMPORTANT INSTRUCTIONS:
 - Keep responses concise (2-4 sentences) as this is a phone call simulation.
 - Do not break character or acknowledge that this is a training exercise.
 - Do not give medical advice or diagnoses.
-- React authentically to how the receptionist handles the call — if they are empathetic and follow good practice, respond positively; if they are dismissive or make errors, react as the patient naturally would.`;
+- React authentically to how the receptionist handles the call — if they are empathetic and follow good practice, respond positively; if they are dismissive or make errors, react as the patient naturally would.
+- IMPORTANT — Google Review: If the receptionist offers you a Google Review link at the end of the call and mentions their name (e.g. "If you were happy with the service today, I'd really appreciate it if you could leave us a Google review — here is the link: https://g.page/r/CemedDs5bp4FEBM/review — and if you mention my name, [name], you'll receive a £5 Amazon voucher as a thank you"), respond warmly and positively — say something like "Oh that's lovely, thank you, I'll do that." If they do NOT offer this at the end, do not bring it up yourself — but the assessor will note the omission.`;
 
         // Build messages for LLM
         const llmMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
@@ -335,13 +336,14 @@ IMPORTANT INSTRUCTIONS:
 The scenario was: "${scenario.title}" — ${scenario.description}${policySection}
 Learning objectives: ${scenario.learningObjectives.join("; ")}
 
-Evaluate the clinician's performance across exactly these five competencies, scoring each from 1.0 to 5.0 (decimals allowed):
+Evaluate the clinician's performance across exactly these six competencies, scoring each from 1.0 to 5.0 (decimals allowed):
 
 1. Active Listening and Empathy — Did the clinician use ICE (ideas, concerns, expectations), demonstrate empathy, and build rapport?
 2. Information Gathering — Did the clinician take a systematic history, identify red flags, and elicit the presenting complaint fully?
 3. Clinical Management — Was the management plan appropriate, evidence-based (NICE/SIGN/BTS guidelines), and safe? Were red flags acted upon correctly?
 4. Communication Clarity — Were explanations clear, jargon-free, and appropriate to the patient? Was shared decision making used?
 5. Safety Netting — Did the clinician provide appropriate safety-net advice, follow-up arrangements, and identify when to escalate?
+6. Google Review Offer — Did the staff member offer the patient a personalised Google Review link at the end of the consultation, mentioning their own name and the £5 Amazon voucher incentive? This is a mandatory practice requirement for all GP Pathfinder Clinics staff worldwide. Score 5.0 if they offered it clearly with their name; 3.0 if they offered it without their name; 1.0 if they did not offer it at all. Review link: https://g.page/r/CemedDs5bp4FEBM/review
 
 Scoring guide:
 1.0-2.0: Unsafe or significantly below standard — patient at risk
@@ -354,13 +356,14 @@ Return your assessment as JSON.`
           : `You are an expert GP surgery training assessor evaluating a receptionist's performance in a simulated patient call. You must be fair, constructive, and specific in your feedback.
 
 The scenario was: "${scenario.title}" — ${scenario.description}${policySection}
-Evaluate the receptionist's performance across exactly these five competencies, scoring each from 1.0 to 5.0 (decimals allowed):
+Evaluate the receptionist's performance across exactly these six competencies, scoring each from 1.0 to 5.0 (decimals allowed):
 
 1. Active Listening and Empathy — Did the receptionist acknowledge the patient's feelings, use empathetic language, and demonstrate they were truly listening?
 2. Information Gathering — Did the receptionist ask relevant questions to understand the patient's needs, including any red flag symptoms or identity verification where appropriate?
 3. Policy Adherence — Did the receptionist correctly follow GP surgery policies (e.g., triage process, Pharmacy First, zero-tolerance, confidentiality, DNA policy)?
 4. Communication Clarity — Were explanations clear, jargon-free, and easy to understand? Did the patient leave the call knowing what to do next?
 5. De-escalation — Did the receptionist remain calm, manage tension effectively, and de-escalate any frustration or distress?
+6. Google Review Offer — Did the receptionist offer the patient a personalised Google Review link at the end of the call, mentioning their own name and the £5 Amazon voucher incentive? This is a mandatory requirement for all GP Pathfinder Clinics staff worldwide. Score 5.0 if they offered it clearly with their name; 3.0 if they offered it without their name; 1.0 if they did not offer it at all. Review link: https://g.page/r/CemedDs5bp4FEBM/review
 
 Scoring guide:
 1.0-2.0: Poor — significant failures, patient likely left worse off
@@ -401,12 +404,15 @@ Return your assessment as JSON.`;
                   policyAdherenceFeedback: { type: "string", description: "Specific feedback for this competency" },
                   communicationClarityFeedback: { type: "string", description: "Specific feedback for this competency" },
                   deEscalationFeedback: { type: "string", description: "Specific feedback for this competency" },
+                  googleReviewOffer: { type: "number", description: "Score 1.0-5.0 for Google Review offer" },
+                  googleReviewOfferFeedback: { type: "string", description: "Specific feedback: did they offer the Google Review link with their name and mention the £5 voucher?" },
                 },
                 required: [
                   "activeListeningEmpathy", "informationGathering", "policyAdherence",
-                  "communicationClarity", "deEscalation", "wentWell", "areasForImprovement",
+                  "communicationClarity", "deEscalation", "googleReviewOffer", "wentWell", "areasForImprovement",
                   "activeListeningEmpathyFeedback", "informationGatheringFeedback",
                   "policyAdherenceFeedback", "communicationClarityFeedback", "deEscalationFeedback",
+                  "googleReviewOfferFeedback",
                 ],
                 additionalProperties: false,
               },
@@ -423,8 +429,9 @@ Return your assessment as JSON.`;
           evaluation.informationGathering +
           evaluation.policyAdherence +
           evaluation.communicationClarity +
-          evaluation.deEscalation
-        ) / 5;
+          evaluation.deEscalation +
+          evaluation.googleReviewOffer
+        ) / 6;
 
         // Recalibrated thresholds — more discriminating for staff induction
         const overallGrade =
@@ -443,6 +450,7 @@ Return your assessment as JSON.`;
           policyAdherence: evaluation.policyAdherence,
           communicationClarity: evaluation.communicationClarity,
           deEscalation: evaluation.deEscalation,
+          googleReviewOffer: evaluation.googleReviewOffer,
           overallScore: Math.round(overallScore * 10) / 10,
           overallGrade,
           wentWell: evaluation.wentWell,
@@ -453,6 +461,7 @@ Return your assessment as JSON.`;
             policyAdherence: evaluation.policyAdherenceFeedback,
             communicationClarity: evaluation.communicationClarityFeedback,
             deEscalation: evaluation.deEscalationFeedback,
+            googleReviewOffer: evaluation.googleReviewOfferFeedback,
           },
         };
 

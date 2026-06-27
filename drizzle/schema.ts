@@ -81,6 +81,7 @@ export const scores = mysqlTable("scores", {
   policyAdherence: float("policyAdherence").notNull(),
   communicationClarity: float("communicationClarity").notNull(),
   deEscalation: float("deEscalation").notNull(),
+  googleReviewOffer: float("googleReviewOffer").notNull().default(1.0),
   overallScore: float("overallScore").notNull(),
   overallGrade: varchar("overallGrade", { length: 2 }).notNull(),
   wentWell: text("wentWell").notNull(),

@@ -100,3 +100,13 @@
 - [ ] Verify Railway deployment
 - [ ] Run end-to-end smoke test
 - [ ] Deliver final status report
+
+### Google Review Requirement (added 27 Jun 2026)
+- [x] Add Google Review as a required competency in the scoring engine (6th competency for all scenarios)
+- [x] Update AI patient chat system prompt to expect the trainee to offer a Google Review link at the end
+- [x] Update scoring evaluation prompt to mark Google Review offer as required (pass/fail)
+- [x] Update Roleplay.tsx to show personalised Google Review link and £5 voucher reminder at session end
+- [x] Ensure the Google Review message includes the staff member's name
+- [x] Add googleReviewOffer column to scores table (DB migration applied)
+- [x] Update Scorecard.tsx to display Google Review Offer as 6th competency
+- [x] Google Review URL: https://g.page/r/CemedDs5bp4FEBM/review

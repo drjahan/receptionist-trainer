@@ -2,11 +2,12 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Send, PhoneOff, Phone, User, Bot, Clock, AlertTriangle, Mic, MicOff, Volume2, VolumeX } from "lucide-react";
+import { Send, PhoneOff, Phone, User, Bot, Clock, AlertTriangle, Mic, MicOff, Volume2, VolumeX, Star, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -162,6 +163,10 @@ export default function Roleplay() {
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [startTime] = useState(Date.now());
   const [elapsed, setElapsed] = useState(0);
+  // Google Review constants
+  const REVIEW_LINK = "https://g.page/r/CemedDs5bp4FEBM/review";
+  const { user: authUser } = useAuth();
+  const displayName = authUser?.name ?? "your name";
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevMessageCountRef = useRef(0);
 
@@ -426,6 +431,29 @@ export default function Roleplay() {
 
           {/* Input area */}
           <div className="border-t border-border p-4">
+            {/* Google Review reminder — shown when conversation has 4+ messages */}
+            {(messages?.length ?? 0) >= 4 && session?.status === "active" && (
+              <div className="mb-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <div className="flex items-start gap-2">
+                  <Star className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-amber-800 mb-1">Reminder: Offer a Google Review before ending the call</p>
+                    <p className="text-xs text-amber-700 leading-relaxed mb-1.5">
+                      Say: <em>&ldquo;If you were happy with the service today, I&rsquo;d really appreciate it if you could leave us a Google review — the link is {REVIEW_LINK} — and if you mention my name, {displayName}, you&rsquo;ll receive a &pound;5 Amazon voucher as a thank you.&rdquo;</em>
+                    </p>
+                    <a
+                      href={REVIEW_LINK}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-amber-700 underline hover:text-amber-900"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      {REVIEW_LINK}
+                    </a>
+                  </div>
+                </div>
+              </div>
+            )}
             {/* Live transcript preview */}
             {(isListening && interimTranscript) && (
               <div className="mb-2 px-3 py-2 bg-primary/5 border border-primary/20 rounded-lg text-sm text-muted-foreground italic flex items-center gap-2">
