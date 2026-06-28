@@ -132,11 +132,11 @@
 
 ### Call Audit — Dual Upload Enhancement (added 28 Jun 2026)
 - [ ] Add call type selector (Clinical Consultation / Telephone Triage / Admin/Registration) to upload step
-- [ ] Add second upload zone for medical record screenshot (PNG, JPG, PDF, max 10 MB)
+- [x] Add second upload zone for EMIS screenshot (PNG, JPG, PDF, max 5 MB)
 - [ ] Update callAudit schema to store medicalRecordBase64 and callType fields
-- [ ] Update callAudit router: accept base64 image in uploadAndTranscribe, pass to evaluateTranscript
-- [ ] Update evaluateTranscript to use vision LLM to read the medical record screenshot and cross-reference with audio transcript
-- [ ] Update AI prompt to adapt criteria based on call type (clinical vs admin)
-- [ ] Update CallAudit.tsx frontend to show two upload zones and call type selector
-- [ ] Add medical record cross-reference section to scorecard
-- [ ] Push to GitHub and deploy to Railway
+- [x] Update callAudit router: accept EMIS screenshot base64, route audio via DGX trim, pass screenshot to evaluate
+- [x] Update evaluate to use GPT-4o Vision to read the EMIS screenshot and score documentation criteria
+- [x] Update AI prompts: patient-name prohibition in all LLM outputs (Whisper + GPT-4o)
+- [x] Update CallAudit.tsx frontend: dual upload zones (audio + EMIS screenshot), 3-step flow
+- [x] DGX trim routing: audio routed via POST 192.168.0.39:8765/trim (graceful fallback if DGX offline)
+- [x] Push to GitHub and deploy to Railway
