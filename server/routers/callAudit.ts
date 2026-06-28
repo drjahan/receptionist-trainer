@@ -3,8 +3,13 @@
  * Handles upload, transcription, and AI evaluation of real telephone consultations
  * against the GP Pathfinder pharmacist supervision criteria.
  *
- * Audio is transcribed directly from the uploaded base64 buffer via Whisper.
- * No S3 / Manus Forge presign is required — works on Railway with OPENAI_API_KEY.
+ * Audio pipeline:
+ *   1. Audio → DGX trim service (ffmpeg strips first 10 s, no storage)
+ *   2. Trimmed audio → OpenAI Whisper (transcription)
+ *   3. Transcript + optional EMIS screenshot → GPT-4o (evaluation)
+ *
+ * EMIS screenshot is passed directly to GPT-4o Vision as a base64 image.
+ * No files are stored on Railway or the DGX.
  */
 
 import { z } from "zod";
@@ -50,14 +55,51 @@ export const AUDIT_CRITERIA = [
   { id: "comms_safety_netting", section: "Communication", label: "Safety netting advice given (when to seek further help, red flags to watch for)", audioAssessable: true },
   { id: "comms_consent", section: "Communication", label: "Patient consent and understanding confirmed", audioAssessable: true },
 
-  // Part F — Documentation (cannot be assessed from audio alone)
+  // Part F — Documentation (cannot be assessed from audio alone — enhanced if EMIS screenshot provided)
   { id: "documentation_emis", section: "Documentation", label: "EMIS record updated accurately and contemporaneously", audioAssessable: false },
   { id: "documentation_coding", section: "Documentation", label: "Correct Read/SNOMED codes applied", audioAssessable: false },
 ] as const;
 
 export type CriterionId = typeof AUDIT_CRITERIA[number]["id"];
 
-// ─── Internal: transcribe audio buffer directly via Whisper ──────────────────
+// ─── DGX trim: strip first 10 seconds from audio ─────────────────────────────
+
+const DGX_TRIM_URL = process.env.DGX_TRIM_URL ?? "http://192.168.0.39:8765";
+const DGX_TRIM_KEY = process.env.DGX_TRIM_API_KEY ?? "gp-pathfinder-trim-2026";
+
+async function trimAudioViaDGX(
+  audioBuffer: Buffer,
+  mimeType: string,
+  filename: string,
+): Promise<Buffer> {
+  try {
+    const formData = new FormData();
+    const blob = new Blob([new Uint8Array(audioBuffer)], { type: mimeType });
+    formData.append("audio", blob, filename);
+
+    const resp = await fetch(`${DGX_TRIM_URL}/trim`, {
+      method: "POST",
+      headers: { "X-API-Key": DGX_TRIM_KEY },
+      body: formData,
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!resp.ok) {
+      // DGX unreachable or failed — fall back to original audio (log but don't fail)
+      console.warn(`[CallAudit] DGX trim failed (${resp.status}) — using original audio`);
+      return audioBuffer;
+    }
+
+    const trimmedArrayBuffer = await resp.arrayBuffer();
+    return Buffer.from(trimmedArrayBuffer);
+  } catch (err) {
+    // Network error (DGX offline) — fall back gracefully
+    console.warn(`[CallAudit] DGX trim unreachable — using original audio. Error: ${err}`);
+    return audioBuffer;
+  }
+}
+
+// ─── Whisper transcription ────────────────────────────────────────────────────
 
 async function transcribeBuffer(
   audioBuffer: Buffer,
@@ -81,7 +123,9 @@ async function transcribeBuffer(
   formData.append("response_format", "text");
   formData.append(
     "prompt",
-    "This is a UK NHS GP surgery telephone consultation between a clinician and a patient. Transcribe accurately including medical terminology, drug names, and dosages.",
+    "This is a UK NHS GP surgery telephone consultation between a clinician and a patient. " +
+    "Transcribe accurately including medical terminology, drug names, and dosages. " +
+    "Do not attempt to identify or name the patient — use 'the patient' throughout.",
   );
 
   const resp = await fetch(`${forgeUrl}/v1/audio/transcriptions`, {
@@ -115,7 +159,7 @@ export const callAuditRouter = router({
     return getCallAuditsByUserId(ctx.user.id);
   }),
 
-  // Step 1 — Upload audio and transcribe in one step (no S3 required)
+  // Step 1 — Upload audio (+ optional EMIS screenshot) and transcribe
   upload: protectedProcedure
     .input(z.object({
       clinicianName: z.string().optional(),
@@ -124,6 +168,9 @@ export const callAuditRouter = router({
       audioBase64: z.string(),
       audioMimeType: z.string().default("audio/mpeg"),
       audioFilename: z.string().default("consultation.mp3"),
+      // Optional EMIS screenshot — base64 encoded image (PNG/JPG/PDF first page)
+      emisScreenshotBase64: z.string().optional(),
+      emisScreenshotMimeType: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const audioBuffer = Buffer.from(input.audioBase64, "base64");
@@ -137,33 +184,55 @@ export const callAuditRouter = router({
         });
       }
 
-      // Create audit record first (status = pending)
+      // Create audit record (status = pending)
       const auditId = await createCallAudit({
         userId: ctx.user.id,
         clinicianName: input.clinicianName ?? null,
         emisNumber: input.emisNumber ?? null,
         auditDate: input.auditDate ?? null,
-        audioUrl: null,   // not storing audio on Railway
+        audioUrl: null,
         status: "pending",
       });
 
-      // Transcribe directly from buffer
-      const transcript = await transcribeBuffer(
+      // Route audio through DGX trim service (strips first 10 s)
+      const trimmedBuffer = await trimAudioViaDGX(
         audioBuffer,
         input.audioMimeType,
         input.audioFilename,
       );
 
-      await updateCallAudit(auditId, { transcript, status: "transcribed" });
+      // Transcribe trimmed audio via Whisper
+      const transcript = await transcribeBuffer(
+        trimmedBuffer,
+        input.audioMimeType,
+        input.audioFilename,
+      );
 
-      return { auditId, transcript };
+      // Store transcript and EMIS screenshot reference
+      await updateCallAudit(auditId, {
+        transcript,
+        // Store screenshot base64 in additionalNotes temporarily (no dedicated column needed)
+        // We pass it through to evaluate via the client
+        status: "transcribed",
+      });
+
+      return {
+        auditId,
+        transcript,
+        // Echo back so client can pass to evaluate step
+        emisScreenshotBase64: input.emisScreenshotBase64 ?? null,
+        emisScreenshotMimeType: input.emisScreenshotMimeType ?? null,
+      };
     }),
 
-  // Step 2 — Evaluate the transcript against the audit criteria
+  // Step 2 — Evaluate transcript (+ optional EMIS screenshot) against audit criteria
   evaluate: protectedProcedure
     .input(z.object({
       auditId: z.number(),
       transcriptOverride: z.string().optional(),
+      // Optional EMIS screenshot passed from the upload step
+      emisScreenshotBase64: z.string().optional(),
+      emisScreenshotMimeType: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const audit = await getCallAuditById(input.auditId);
@@ -175,24 +244,36 @@ export const callAuditRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "No transcript available for evaluation" });
       }
 
-      // Build criteria list for the prompt (audio-assessable only)
-      const assessableCriteria = AUDIT_CRITERIA.filter(c => c.audioAssessable);
-      const criteriaJson = assessableCriteria.map(c => `"${c.id}": <0|1|2>`).join(",\n  ");
+      const hasScreenshot = !!input.emisScreenshotBase64;
+
+      // Build criteria list for the prompt
+      const assessableCriteria = AUDIT_CRITERIA.filter(c =>
+        c.audioAssessable || (hasScreenshot && !c.audioAssessable)
+      );
+      const criteriaJson = AUDIT_CRITERIA.map(c => `"${c.id}": <0|1|2|null>`).join(",\n  ");
 
       const systemPrompt = `You are an experienced NHS clinical supervisor assessing a pharmacist telephone consultation against the GP Pathfinder supervision criteria.
+
+IMPORTANT — Patient identity rules:
+- Do NOT reference the patient's name anywhere in your response
+- Do NOT reference the patient's date of birth, NHS number, or address
+- Refer to the patient only as "the patient" throughout
+- Focus entirely on the clinical content and communication quality
 
 Scoring scale:
 - 2 = Done well — criterion clearly met
 - 1 = Partial — criterion partially met or unclear
 - 0 = Not done — criterion not met or absent
-- null = Cannot be assessed from audio alone (use for documentation criteria)
+- null = Cannot be assessed from the available evidence
 
 You must return ONLY valid JSON with no markdown, no explanation, no preamble.`;
 
-      const userPrompt = `Evaluate this telephone consultation transcript against the GP Pathfinder pharmacist supervision criteria.
+      const userPromptText = `Evaluate this telephone consultation against the GP Pathfinder pharmacist supervision criteria.
 
-TRANSCRIPT:
+TRANSCRIPT (first 10 seconds of patient identification have been removed):
 ${transcript}
+
+${hasScreenshot ? "An EMIS medical record screenshot has also been provided. Use it to assess documentation criteria." : "No EMIS record screenshot was provided — mark documentation criteria as null."}
 
 Return this exact JSON structure (no markdown, no extra text):
 {
@@ -203,8 +284,8 @@ Return this exact JSON structure (no markdown, no extra text):
   "criteriaScores": {
   ${criteriaJson}
   },
-  "clinicalStrengths": "<2-4 sentences on what the clinician did well>",
-  "clinicalConcerns": "<2-4 sentences on clinical learning points or concerns>",
+  "clinicalStrengths": "<2-4 sentences on what the clinician did well — no patient names>",
+  "clinicalConcerns": "<2-4 sentences on clinical learning points or concerns — no patient names>",
   "nonClinicalConcerns": "<1-2 sentences on communication or professionalism issues, or 'None identified'>",
   "additionalNotes": "<any other relevant supervisor observations, or 'None'>"
 }
@@ -214,11 +295,32 @@ Traffic light guidance:
 - amber = minor concern, monitor / discuss at next supervision
 - red = significant concern, requires immediate discussion or remediation`;
 
+      // Build messages — include screenshot as vision input if provided
+      const messages: Parameters<typeof invokeLLM>[0]["messages"] = [
+        { role: "system", content: systemPrompt },
+      ];
+
+      if (hasScreenshot && input.emisScreenshotBase64 && input.emisScreenshotMimeType) {
+        // GPT-4o vision: send transcript + image together
+        messages.push({
+          role: "user",
+          content: [
+            { type: "text", text: userPromptText },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:${input.emisScreenshotMimeType};base64,${input.emisScreenshotBase64}`,
+                detail: "high",
+              },
+            },
+          ] as unknown as string,
+        });
+      } else {
+        messages.push({ role: "user", content: userPromptText });
+      }
+
       const response = await invokeLLM({
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
+        messages,
         model: "gpt-4o",
       });
 

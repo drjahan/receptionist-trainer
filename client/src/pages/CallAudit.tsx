@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import {
   Upload,
   FileAudio,
+  FileImage,
   Mic,
   CheckCircle2,
   XCircle,
@@ -19,13 +20,14 @@ import {
   ClipboardList,
   History,
   Phone,
+  ShieldCheck,
 } from "lucide-react";
 import { Link } from "wouter";
 import AppLayout from "@/components/AppLayout";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Step = "upload" | "review" | "evaluate" | "results";
+type Step = "upload" | "review" | "results";
 
 interface AuditResult {
   id: number;
@@ -112,11 +114,11 @@ function CriterionRow({
         <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{section}</p>
         <p className="text-sm text-foreground mt-0.5">{label}</p>
         {!audioAssessable && (
-          <p className="text-xs text-muted-foreground mt-0.5 italic">Cannot be assessed from audio alone</p>
+          <p className="text-xs text-muted-foreground mt-0.5 italic">Assessed from EMIS screenshot if provided</p>
         )}
       </div>
       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border shrink-0 ${scoreBg}`}>
-        {audioAssessable ? scoreLabel : "N/A"}
+        {scoreLabel}
       </span>
     </div>
   );
@@ -129,12 +131,25 @@ export default function CallAudit() {
   const [auditId, setAuditId] = useState<number | null>(null);
   const [transcript, setTranscript] = useState("");
   const [auditResult, setAuditResult] = useState<AuditResult | null>(null);
-  const [dragOver, setDragOver] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  // Audio upload state
+  const [dragOverAudio, setDragOverAudio] = useState(false);
+  const [selectedAudioFile, setSelectedAudioFile] = useState<File | null>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
+
+  // EMIS screenshot state
+  const [dragOverEmis, setDragOverEmis] = useState(false);
+  const [selectedEmisFile, setSelectedEmisFile] = useState<File | null>(null);
+  const emisInputRef = useRef<HTMLInputElement>(null);
+
+  // Stored EMIS screenshot base64 (echoed back from upload, passed to evaluate)
+  const [emisScreenshotBase64, setEmisScreenshotBase64] = useState<string | null>(null);
+  const [emisScreenshotMimeType, setEmisScreenshotMimeType] = useState<string | null>(null);
+
+  // Form fields
   const [clinicianName, setClinicianName] = useState("");
   const [emisNumber, setEmisNumber] = useState("");
   const [auditDate, setAuditDate] = useState(new Date().toISOString().split("T")[0]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: criteria } = trpc.callAudit.getCriteria.useQuery();
   const { data: auditHistory } = trpc.callAudit.list.useQuery();
@@ -143,6 +158,11 @@ export default function CallAudit() {
     onSuccess: (data) => {
       setAuditId(data.auditId);
       setTranscript(data.transcript);
+      // Store echoed EMIS screenshot for the evaluate step
+      if (data.emisScreenshotBase64) {
+        setEmisScreenshotBase64(data.emisScreenshotBase64);
+        setEmisScreenshotMimeType(data.emisScreenshotMimeType ?? "image/png");
+      }
       setStep("review");
       toast.success("Transcription complete — please review before evaluating");
     },
@@ -160,7 +180,9 @@ export default function CallAudit() {
     onError: (err) => toast.error(`Evaluation failed: ${err.message}`),
   });
 
-  const handleFileSelect = useCallback((file: File) => {
+  // ── Audio file selection ──────────────────────────────────────────────────
+
+  const handleAudioFileSelect = useCallback((file: File) => {
     const allowedExts = ["mp3", "wav", "m4a", "mp4"];
     const ext = file.name.split(".").pop()?.toLowerCase();
     if (!allowedExts.includes(ext ?? "")) {
@@ -168,39 +190,88 @@ export default function CallAudit() {
       return;
     }
     if (file.size > 25 * 1024 * 1024) {
-      toast.error("File must be under 25 MB");
+      toast.error("Audio file must be under 25 MB");
       return;
     }
-    setSelectedFile(file);
+    setSelectedAudioFile(file);
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleAudioDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    setDragOver(false);
+    setDragOverAudio(false);
     const file = e.dataTransfer.files[0];
-    if (file) handleFileSelect(file);
-  }, [handleFileSelect]);
+    if (file) handleAudioFileSelect(file);
+  }, [handleAudioFileSelect]);
+
+  // ── EMIS screenshot file selection ───────────────────────────────────────
+
+  const handleEmisFileSelect = useCallback((file: File) => {
+    const allowedExts = ["png", "jpg", "jpeg", "pdf"];
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (!allowedExts.includes(ext ?? "")) {
+      toast.error("Please upload a PNG, JPG, or PDF screenshot");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Screenshot must be under 5 MB");
+      return;
+    }
+    setSelectedEmisFile(file);
+  }, []);
+
+  const handleEmisDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverEmis(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleEmisFileSelect(file);
+  }, [handleEmisFileSelect]);
+
+  // ── Upload handler ────────────────────────────────────────────────────────
 
   const handleUpload = async () => {
-    if (!selectedFile) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = (reader.result as string).split(",")[1];
-      uploadMutation.mutate({
-        clinicianName: clinicianName || undefined,
-        emisNumber: emisNumber || undefined,
-        auditDate: auditDate || undefined,
-        audioBase64: base64,
-        audioMimeType: selectedFile.type || "audio/mpeg",
-        audioFilename: selectedFile.name,
+    if (!selectedAudioFile) return;
+
+    // Read audio as base64
+    const audioBase64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve((reader.result as string).split(",")[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(selectedAudioFile);
+    });
+
+    // Optionally read EMIS screenshot as base64
+    let emisBase64: string | undefined;
+    let emisMime: string | undefined;
+    if (selectedEmisFile) {
+      emisBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(selectedEmisFile);
       });
-    };
-    reader.readAsDataURL(selectedFile);
+      emisMime = selectedEmisFile.type || "image/png";
+    }
+
+    uploadMutation.mutate({
+      clinicianName: clinicianName || undefined,
+      emisNumber: emisNumber || undefined,
+      auditDate: auditDate || undefined,
+      audioBase64,
+      audioMimeType: selectedAudioFile.type || "audio/mpeg",
+      audioFilename: selectedAudioFile.name,
+      emisScreenshotBase64: emisBase64,
+      emisScreenshotMimeType: emisMime,
+    });
   };
 
   const handleEvaluate = () => {
     if (!auditId) return;
-    evaluateMutation.mutate({ auditId, transcriptOverride: transcript });
+    evaluateMutation.mutate({
+      auditId,
+      transcriptOverride: transcript,
+      emisScreenshotBase64: emisScreenshotBase64 ?? undefined,
+      emisScreenshotMimeType: emisScreenshotMimeType ?? undefined,
+    });
   };
 
   const handleReset = () => {
@@ -208,7 +279,10 @@ export default function CallAudit() {
     setAuditId(null);
     setTranscript("");
     setAuditResult(null);
-    setSelectedFile(null);
+    setSelectedAudioFile(null);
+    setSelectedEmisFile(null);
+    setEmisScreenshotBase64(null);
+    setEmisScreenshotMimeType(null);
     setClinicianName("");
     setEmisNumber("");
     setAuditDate(new Date().toISOString().split("T")[0]);
@@ -217,7 +291,6 @@ export default function CallAudit() {
   const steps: { id: Step; label: string }[] = [
     { id: "upload", label: "Upload & Transcribe" },
     { id: "review", label: "Review" },
-    { id: "evaluate", label: "Evaluate" },
     { id: "results", label: "Results" },
   ];
 
@@ -280,6 +353,8 @@ export default function CallAudit() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
+
+              {/* Metadata fields */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="text-xs font-medium text-muted-foreground block mb-1">Clinician Name</label>
@@ -295,46 +370,109 @@ export default function CallAudit() {
                 </div>
               </div>
 
-              <div
-                className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer ${
-                  dragOver ? "border-primary bg-primary/5" :
-                  selectedFile ? "border-emerald-400 bg-emerald-50/30" :
-                  "border-border hover:border-primary/50 hover:bg-muted/30"
-                }`}
-                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".mp3,.wav,.m4a,audio/mpeg,audio/wav,audio/m4a,audio/mp4"
-                  className="hidden"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }}
-                />
-                {selectedFile ? (
-                  <div className="flex flex-col items-center gap-2">
-                    <FileAudio className="w-10 h-10 text-emerald-500" />
-                    <p className="font-medium text-foreground">{selectedFile.name}</p>
-                    <p className="text-sm text-muted-foreground">{(selectedFile.size / 1024 / 1024).toFixed(1)} MB</p>
-                    <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); setSelectedFile(null); }}>Remove</Button>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-2">
-                    <Mic className="w-10 h-10 text-muted-foreground" />
-                    <p className="font-medium text-foreground">Drop audio file here or click to browse</p>
-                    <p className="text-sm text-muted-foreground">MP3, WAV, or M4A — max 25 MB</p>
+              {/* Audio upload zone */}
+              <div>
+                <label className="text-xs font-semibold text-foreground block mb-2 flex items-center gap-1.5">
+                  <FileAudio className="w-3.5 h-3.5" />
+                  Audio Recording <span className="text-red-500">*</span>
+                </label>
+                <div
+                  className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer ${
+                    dragOverAudio ? "border-primary bg-primary/5" :
+                    selectedAudioFile ? "border-emerald-400 bg-emerald-50/30" :
+                    "border-border hover:border-primary/50 hover:bg-muted/30"
+                  }`}
+                  onDragOver={e => { e.preventDefault(); setDragOverAudio(true); }}
+                  onDragLeave={() => setDragOverAudio(false)}
+                  onDrop={handleAudioDrop}
+                  onClick={() => audioInputRef.current?.click()}
+                >
+                  <input
+                    ref={audioInputRef}
+                    type="file"
+                    accept=".mp3,.wav,.m4a,audio/mpeg,audio/wav,audio/m4a,audio/mp4"
+                    className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleAudioFileSelect(f); }}
+                  />
+                  {selectedAudioFile ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <FileAudio className="w-8 h-8 text-emerald-500" />
+                      <p className="font-medium text-foreground text-sm">{selectedAudioFile.name}</p>
+                      <p className="text-xs text-muted-foreground">{(selectedAudioFile.size / 1024 / 1024).toFixed(1)} MB</p>
+                      <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); setSelectedAudioFile(null); }}>Remove</Button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2">
+                      <Mic className="w-8 h-8 text-muted-foreground" />
+                      <p className="font-medium text-foreground text-sm">Drop audio file here or click to browse</p>
+                      <p className="text-xs text-muted-foreground">MP3, WAV, or M4A — max 25 MB</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* EMIS screenshot upload zone */}
+              <div>
+                <label className="text-xs font-semibold text-foreground block mb-2 flex items-center gap-1.5">
+                  <FileImage className="w-3.5 h-3.5" />
+                  EMIS Record Screenshot <span className="text-muted-foreground font-normal">(optional — improves documentation scoring)</span>
+                </label>
+                <div
+                  className={`border-2 border-dashed rounded-xl p-5 text-center transition-colors cursor-pointer ${
+                    dragOverEmis ? "border-violet-400 bg-violet-50/30" :
+                    selectedEmisFile ? "border-violet-400 bg-violet-50/30" :
+                    "border-border hover:border-violet-300 hover:bg-muted/20"
+                  }`}
+                  onDragOver={e => { e.preventDefault(); setDragOverEmis(true); }}
+                  onDragLeave={() => setDragOverEmis(false)}
+                  onDrop={handleEmisDrop}
+                  onClick={() => emisInputRef.current?.click()}
+                >
+                  <input
+                    ref={emisInputRef}
+                    type="file"
+                    accept=".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf"
+                    className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleEmisFileSelect(f); }}
+                  />
+                  {selectedEmisFile ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <FileImage className="w-7 h-7 text-violet-500" />
+                      <p className="font-medium text-foreground text-sm">{selectedEmisFile.name}</p>
+                      <p className="text-xs text-muted-foreground">{(selectedEmisFile.size / 1024).toFixed(0)} KB</p>
+                      <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); setSelectedEmisFile(null); }}>Remove</Button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2">
+                      <FileImage className="w-7 h-7 text-muted-foreground/60" />
+                      <p className="text-sm text-muted-foreground">Drop EMIS screenshot here or click to browse</p>
+                      <p className="text-xs text-muted-foreground">PNG, JPG, or PDF — max 5 MB</p>
+                    </div>
+                  )}
+                </div>
+                {selectedEmisFile && (
+                  <div className="mt-2 flex items-center gap-1.5 text-xs text-violet-700">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Ensure patient name and NHS number are cropped or redacted before uploading</span>
                   </div>
                 )}
               </div>
 
+              {/* GDPR consent reminder */}
               <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
-                <strong>Consent reminder:</strong> Ensure you have obtained explicit consent from all parties before uploading a recording. Audio files are processed securely and used solely for this audit.
+                <strong>Consent reminder:</strong> Ensure you have obtained explicit consent from all parties before uploading a recording. The first 10 seconds of audio are automatically stripped by the on-premises DGX service before cloud transcription.
               </div>
 
-              <Button className="w-full" disabled={!selectedFile || uploadMutation.isPending} onClick={handleUpload}>
-                {uploadMutation.isPending ? <><Spinner className="w-4 h-4 mr-2" /> Uploading…</> : <><Upload className="w-4 h-4 mr-2" /> Upload and Continue</>}
+              <Button
+                className="w-full"
+                disabled={!selectedAudioFile || uploadMutation.isPending}
+                onClick={handleUpload}
+              >
+                {uploadMutation.isPending ? (
+                  <><Spinner className="w-4 h-4 mr-2" /> Uploading &amp; transcribing…</>
+                ) : (
+                  <><Upload className="w-4 h-4 mr-2" /> Upload and Transcribe</>
+                )}
               </Button>
             </CardContent>
           </Card>
@@ -351,16 +489,30 @@ export default function CallAudit() {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Review and correct the transcript below before evaluation. You can edit any errors, particularly medical terms or names.
+                Review and correct the transcript below before evaluation. You can edit any errors, particularly medical terms or drug names.
               </p>
+              {emisScreenshotBase64 && (
+                <div className="flex items-center gap-2 rounded-lg bg-violet-50 border border-violet-200 px-3 py-2 text-xs text-violet-800">
+                  <FileImage className="w-4 h-4 shrink-0" />
+                  <span>EMIS screenshot attached — documentation criteria will be scored by GPT-4o Vision</span>
+                </div>
+              )}
               <Textarea
                 value={transcript}
                 onChange={e => setTranscript(e.target.value)}
                 className="min-h-[300px] font-mono text-sm"
-                placeholder="Transcript will appear here…"
+                placeholder="Transcript will appear here..."
               />
-              <Button className="w-full" disabled={!transcript.trim() || evaluateMutation.isPending} onClick={handleEvaluate}>
-                {evaluateMutation.isPending ? <><Spinner className="w-4 h-4 mr-2" /> Evaluating against audit criteria…</> : "Evaluate Against Audit Criteria"}
+              <Button
+                className="w-full"
+                disabled={!transcript.trim() || evaluateMutation.isPending}
+                onClick={handleEvaluate}
+              >
+                {evaluateMutation.isPending ? (
+                  <><Spinner className="w-4 h-4 mr-2" /> Evaluating against audit criteria...</>
+                ) : (
+                  "Evaluate Against Audit Criteria"
+                )}
               </Button>
             </CardContent>
           </Card>
@@ -379,6 +531,11 @@ export default function CallAudit() {
                     <div className="flex flex-wrap gap-2 mt-2">
                       {auditResult.emisNumber && <Badge variant="outline">EMIS: {auditResult.emisNumber}</Badge>}
                       {auditResult.auditDate && <Badge variant="outline">{auditResult.auditDate}</Badge>}
+                      {emisScreenshotBase64 && (
+                        <Badge className="bg-violet-100 text-violet-800 border-violet-200">
+                          <FileImage className="w-3 h-3 mr-1" /> EMIS screenshot included
+                        </Badge>
+                      )}
                       <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">Evaluated</Badge>
                     </div>
                   </div>
@@ -408,7 +565,7 @@ export default function CallAudit() {
               <CardHeader>
                 <CardTitle className="text-base">Part B — Detailed Criteria Scores</CardTitle>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Scored 0 (not done) · 1 (partial) · 2 (done well) · N/A (cannot be assessed from audio)
+                  Scored 0 (not done) · 1 (partial) · 2 (done well) · N/A (cannot be assessed)
                 </p>
               </CardHeader>
               <CardContent>
