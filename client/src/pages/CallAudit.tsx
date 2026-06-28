@@ -25,7 +25,7 @@ import AppLayout from "@/components/AppLayout";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Step = "upload" | "transcribe" | "review" | "evaluate" | "results";
+type Step = "upload" | "review" | "evaluate" | "results";
 
 interface AuditResult {
   id: number;
@@ -142,19 +142,11 @@ export default function CallAudit() {
   const uploadMutation = trpc.callAudit.upload.useMutation({
     onSuccess: (data) => {
       setAuditId(data.auditId);
-      setStep("transcribe");
-      toast.success("Audio uploaded successfully");
-    },
-    onError: (err) => toast.error(`Upload failed: ${err.message}`),
-  });
-
-  const transcribeMutation = trpc.callAudit.transcribe.useMutation({
-    onSuccess: (data) => {
       setTranscript(data.transcript);
       setStep("review");
-      toast.success("Transcription complete");
+      toast.success("Transcription complete — please review before evaluating");
     },
-    onError: (err) => toast.error(`Transcription failed: ${err.message}`),
+    onError: (err) => toast.error(`Upload failed: ${err.message}`),
   });
 
   const evaluateMutation = trpc.callAudit.evaluate.useMutation({
@@ -206,11 +198,6 @@ export default function CallAudit() {
     reader.readAsDataURL(selectedFile);
   };
 
-  const handleTranscribe = () => {
-    if (!auditId) return;
-    transcribeMutation.mutate({ auditId });
-  };
-
   const handleEvaluate = () => {
     if (!auditId) return;
     evaluateMutation.mutate({ auditId, transcriptOverride: transcript });
@@ -228,8 +215,7 @@ export default function CallAudit() {
   };
 
   const steps: { id: Step; label: string }[] = [
-    { id: "upload", label: "Upload" },
-    { id: "transcribe", label: "Transcribe" },
+    { id: "upload", label: "Upload & Transcribe" },
     { id: "review", label: "Review" },
     { id: "evaluate", label: "Evaluate" },
     { id: "results", label: "Results" },
@@ -349,29 +335,6 @@ export default function CallAudit() {
 
               <Button className="w-full" disabled={!selectedFile || uploadMutation.isPending} onClick={handleUpload}>
                 {uploadMutation.isPending ? <><Spinner className="w-4 h-4 mr-2" /> Uploading…</> : <><Upload className="w-4 h-4 mr-2" /> Upload and Continue</>}
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* ── Step: Transcribe ── */}
-        {step === "transcribe" && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Mic className="w-5 h-5" />
-                Transcribe Audio
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                The audio will be transcribed using NHS-aware speech recognition. This typically takes 30–90 seconds depending on call length.
-              </p>
-              <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800">
-                The transcription is optimised for UK medical terminology and GP surgery consultations.
-              </div>
-              <Button className="w-full" disabled={transcribeMutation.isPending} onClick={handleTranscribe}>
-                {transcribeMutation.isPending ? <><Spinner className="w-4 h-4 mr-2" /> Transcribing… this may take a minute</> : "Transcribe Recording"}
               </Button>
             </CardContent>
           </Card>
@@ -528,7 +491,7 @@ export default function CallAudit() {
                       setTranscript(a.transcript);
                       setStep("review");
                     } else {
-                      setStep("transcribe");
+                      setStep("upload");
                     }
                   }}
                 >

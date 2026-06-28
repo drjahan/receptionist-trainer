@@ -2,14 +2,16 @@
  * Call Audit Router
  * Handles upload, transcription, and AI evaluation of real telephone consultations
  * against the GP Pathfinder pharmacist supervision criteria.
+ *
+ * Audio is transcribed directly from the uploaded base64 buffer via Whisper.
+ * No S3 / Manus Forge presign is required — works on Railway with OPENAI_API_KEY.
  */
 
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { protectedProcedure, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
-import { transcribeAudio } from "../_core/voiceTranscription";
-import { storagePut } from "../storage";
+import { ENV } from "../_core/env";
 import {
   createCallAudit,
   getCallAuditById,
@@ -55,6 +57,50 @@ export const AUDIT_CRITERIA = [
 
 export type CriterionId = typeof AUDIT_CRITERIA[number]["id"];
 
+// ─── Internal: transcribe audio buffer directly via Whisper ──────────────────
+
+async function transcribeBuffer(
+  audioBuffer: Buffer,
+  mimeType: string,
+  filename: string,
+): Promise<string> {
+  const forgeUrl = ENV.forgeApiUrl?.replace(/\/+$/, "") ?? "https://api.openai.com";
+  const forgeKey = ENV.forgeApiKey;
+
+  if (!forgeKey) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Transcription API key not configured on this server.",
+    });
+  }
+
+  const formData = new FormData();
+  const blob = new Blob([new Uint8Array(audioBuffer)], { type: mimeType });
+  formData.append("file", blob, filename);
+  formData.append("model", "whisper-1");
+  formData.append("response_format", "text");
+  formData.append(
+    "prompt",
+    "This is a UK NHS GP surgery telephone consultation between a clinician and a patient. Transcribe accurately including medical terminology, drug names, and dosages.",
+  );
+
+  const resp = await fetch(`${forgeUrl}/v1/audio/transcriptions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${forgeKey}` },
+    body: formData,
+  });
+
+  if (!resp.ok) {
+    const msg = await resp.text().catch(() => resp.statusText);
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: `Transcription failed (${resp.status}): ${msg}`,
+    });
+  }
+
+  return (await resp.text()).trim();
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 export const callAuditRouter = router({
@@ -69,7 +115,7 @@ export const callAuditRouter = router({
     return getCallAuditsByUserId(ctx.user.id);
   }),
 
-  // Step 1 — Upload audio and create the audit record
+  // Step 1 — Upload audio and transcribe in one step (no S3 required)
   upload: protectedProcedure
     .input(z.object({
       clinicianName: z.string().optional(),
@@ -80,65 +126,40 @@ export const callAuditRouter = router({
       audioFilename: z.string().default("consultation.mp3"),
     }))
     .mutation(async ({ ctx, input }) => {
-      // Decode base64 audio
       const audioBuffer = Buffer.from(input.audioBase64, "base64");
 
-      // Upload to S3
-      const ext = input.audioFilename.split(".").pop() ?? "mp3";
-      const { url: audioUrl } = await storagePut(
-        `call-audits/${ctx.user.id}_${Date.now()}.${ext}`,
-        audioBuffer,
-        input.audioMimeType,
-      );
+      // Validate size (25 MB limit)
+      const sizeMb = audioBuffer.length / (1024 * 1024);
+      if (sizeMb > 25) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `File is ${sizeMb.toFixed(1)} MB — maximum allowed is 25 MB.`,
+        });
+      }
 
-      // Create audit record
+      // Create audit record first (status = pending)
       const auditId = await createCallAudit({
         userId: ctx.user.id,
         clinicianName: input.clinicianName ?? null,
         emisNumber: input.emisNumber ?? null,
         auditDate: input.auditDate ?? null,
-        audioUrl,
+        audioUrl: null,   // not storing audio on Railway
         status: "pending",
       });
 
-      return { auditId };
+      // Transcribe directly from buffer
+      const transcript = await transcribeBuffer(
+        audioBuffer,
+        input.audioMimeType,
+        input.audioFilename,
+      );
+
+      await updateCallAudit(auditId, { transcript, status: "transcribed" });
+
+      return { auditId, transcript };
     }),
 
-  // Step 2 — Transcribe the uploaded audio
-  transcribe: protectedProcedure
-    .input(z.object({ auditId: z.number() }))
-    .mutation(async ({ ctx, input }) => {
-      const audit = await getCallAuditById(input.auditId);
-      if (!audit) throw new TRPCError({ code: "NOT_FOUND", message: "Audit record not found" });
-      if (audit.userId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
-      if (!audit.audioUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "No audio file associated with this audit" });
-
-      // Build absolute URL for the audio file
-      const baseUrl = process.env.VITE_FRONTEND_FORGE_API_URL?.replace(/\/+$/, "") ?? "";
-      const audioUrl = audit.audioUrl.startsWith("http")
-        ? audit.audioUrl
-        : `${baseUrl}${audit.audioUrl}`;
-
-      const result = await transcribeAudio({
-        audioUrl,
-        language: "en",
-        prompt: "This is a UK NHS GP surgery telephone consultation between a clinician and a patient. Transcribe accurately including medical terminology, drug names, and dosages.",
-      });
-
-      if ("error" in result) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: result.error,
-        });
-      }
-
-      const transcript = result.text;
-      await updateCallAudit(input.auditId, { transcript, status: "transcribed" });
-
-      return { transcript };
-    }),
-
-  // Step 3 — Evaluate the transcript against the audit criteria
+  // Step 2 — Evaluate the transcript against the audit criteria
   evaluate: protectedProcedure
     .input(z.object({
       auditId: z.number(),
@@ -150,7 +171,9 @@ export const callAuditRouter = router({
       if (audit.userId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
 
       const transcript = input.transcriptOverride ?? audit.transcript;
-      if (!transcript?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "No transcript available for evaluation" });
+      if (!transcript?.trim()) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No transcript available for evaluation" });
+      }
 
       // Build criteria list for the prompt (audio-assessable only)
       const assessableCriteria = AUDIT_CRITERIA.filter(c => c.audioAssessable);
@@ -200,7 +223,9 @@ Traffic light guidance:
       });
 
       const raw = response.choices[0]?.message?.content as string | undefined;
-      if (!raw) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "LLM returned empty response" });
+      if (!raw) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "LLM returned empty response" });
+      }
 
       let parsed: {
         consultationSuitability: string;
