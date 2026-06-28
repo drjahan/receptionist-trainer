@@ -92,3 +92,28 @@ export const scores = mysqlTable("scores", {
 
 export type Score = typeof scores.$inferSelect;
 export type InsertScore = typeof scores.$inferInsert;
+
+// Call audit records — real telephone consultation assessments
+export const callAudits = mysqlTable("call_audits", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  clinicianName: varchar("clinicianName", { length: 255 }),
+  emisNumber: varchar("emisNumber", { length: 64 }),
+  auditDate: varchar("auditDate", { length: 32 }),
+  audioUrl: text("audioUrl"),
+  transcript: text("transcript"),
+  consultationSuitability: varchar("consultationSuitability", { length: 16 }),
+  workingDiagnosis: varchar("workingDiagnosis", { length: 16 }),
+  redFlagsLight: varchar("redFlagsLight", { length: 16 }),
+  treatmentFollowUp: varchar("treatmentFollowUp", { length: 16 }),
+  criteriaScores: json("criteriaScores").$type<Record<string, number | null>>(),
+  clinicalStrengths: text("clinicalStrengths"),
+  clinicalConcerns: text("clinicalConcerns"),
+  nonClinicalConcerns: text("nonClinicalConcerns"),
+  additionalNotes: text("additionalNotes"),
+  status: mysqlEnum("status", ["pending", "transcribed", "evaluated"]).default("pending").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CallAudit = typeof callAudits.$inferSelect;
+export type InsertCallAudit = typeof callAudits.$inferInsert;

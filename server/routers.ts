@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { systemRouter } from "./_core/systemRouter";
+import { callAuditRouter } from "./routers/callAudit";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { invokeLLM } from "./_core/llm";
@@ -144,6 +145,7 @@ const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
 
 export const appRouter = router({
   system: systemRouter,
+  callAudit: callAuditRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {

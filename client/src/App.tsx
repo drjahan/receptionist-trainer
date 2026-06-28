@@ -12,6 +12,7 @@ import History from "./pages/History";
 import Admin from "./pages/Admin";
 import Login from "./pages/Login";
 import CribSheet from "./pages/CribSheet";
+import CallAudit from "./pages/CallAudit";
 import { useAuth } from "./_core/hooks/useAuth";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -48,6 +49,7 @@ function Router() {
       <Route path="/scorecard/:sessionId" component={() => <ProtectedRoute component={Scorecard} />} />
       <Route path="/history" component={() => <ProtectedRoute component={History} />} />
       <Route path="/admin" component={() => <ProtectedRoute component={Admin} />} />
+      <Route path="/call-audit" component={() => <ProtectedRoute component={CallAudit} />} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

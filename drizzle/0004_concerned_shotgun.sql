@@ -1,0 +1,21 @@
+CREATE TABLE `call_audits` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`userId` int NOT NULL,
+	`clinicianName` varchar(255),
+	`emisNumber` varchar(64),
+	`auditDate` varchar(32),
+	`audioUrl` text,
+	`transcript` text,
+	`consultationSuitability` varchar(16),
+	`workingDiagnosis` varchar(16),
+	`redFlagsLight` varchar(16),
+	`treatmentFollowUp` varchar(16),
+	`criteriaScores` json,
+	`clinicalStrengths` text,
+	`clinicalConcerns` text,
+	`nonClinicalConcerns` text,
+	`additionalNotes` text,
+	`status` enum('pending','transcribed','evaluated') NOT NULL DEFAULT 'pending',
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	CONSTRAINT `call_audits_id` PRIMARY KEY(`id`)
+);

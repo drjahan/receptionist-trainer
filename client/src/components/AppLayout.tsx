@@ -9,12 +9,14 @@ import {
   LogOut,
   Menu,
   X,
+  Phone,
 } from "lucide-react";
 import { useState } from "react";
 
 const navItems = [
   { href: "/scenarios", label: "Scenarios", icon: BookOpen },
   { href: "/history", label: "My Progress", icon: History },
+  { href: "/call-audit", label: "Call Audit", icon: Phone },
 ];
 
 const adminItems = [

@@ -1,6 +1,6 @@
 import { eq, desc, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, scenarios, sessions, messages, scores, InsertSession, InsertMessage, InsertScore } from "../drizzle/schema";
+import { InsertUser, users, scenarios, sessions, messages, scores, InsertSession, InsertMessage, InsertScore, callAudits, InsertCallAudit, CallAudit } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -180,4 +180,32 @@ export async function getAllScores() {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(scores).orderBy(desc(scores.createdAt));
+}
+
+// ─── Call Audit helpers ───────────────────────────────────────────────────────
+
+export async function createCallAudit(data: InsertCallAudit) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const [result] = await db.insert(callAudits).values(data);
+  return result.insertId as number;
+}
+
+export async function getCallAuditById(id: number): Promise<CallAudit | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(callAudits).where(eq(callAudits.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function updateCallAudit(id: number, data: Partial<InsertCallAudit>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await db.update(callAudits).set(data).where(eq(callAudits.id, id));
+}
+
+export async function getCallAuditsByUserId(userId: number): Promise<CallAudit[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(callAudits).where(eq(callAudits.userId, userId)).orderBy(desc(callAudits.createdAt));
 }
