@@ -80,19 +80,6 @@ const migrations = [
     ],
   },
   {
-    name: "0004_scenarios_mode_pharmacist",
-    statements: [
-      // Step 1: Expand the enum to include all old + new values so UPDATE can succeed
-      `ALTER TABLE \`scenarios\` MODIFY COLUMN \`mode\` enum('receptionist','clinician','gp','pharmacist') NOT NULL DEFAULT 'receptionist'`,
-      // Step 2: Migrate 'clinician' rows to 'gp'
-      `UPDATE \`scenarios\` SET \`mode\` = 'gp' WHERE \`mode\` = 'clinician'`,
-      // Step 3: Narrow enum to final values only
-      `ALTER TABLE \`scenarios\` MODIFY COLUMN \`mode\` enum('receptionist','gp','pharmacist') NOT NULL DEFAULT 'receptionist'`,
-      // Add googleReviewOffer column to scores if it doesn't exist yet
-      `ALTER TABLE \`scores\` ADD COLUMN IF NOT EXISTS \`googleReviewOffer\` float NOT NULL DEFAULT 0`,
-    ],
-  },
-  {
     name: "0003_force_sessions",
     statements: [
       `CREATE TABLE IF NOT EXISTS \`sessions\` (
@@ -131,6 +118,52 @@ const migrations = [
         \`createdAt\` timestamp NOT NULL DEFAULT (now()),
         CONSTRAINT \`scores_id\` PRIMARY KEY(\`id\`),
         CONSTRAINT \`scores_sessionId_unique\` UNIQUE(\`sessionId\`)
+      )`,
+    ],
+  },
+  {
+    name: "0004_scenarios_mode_pharmacist",
+    statements: [
+      // Step 1: Add mode column if scenarios table exists but lacks it (safe no-op if already there)
+      // First ensure scenarios table has mode column - use a try-safe approach
+      // Step 1: Expand the enum to include all old + new values so UPDATE can succeed
+      `ALTER TABLE \`scenarios\` MODIFY COLUMN \`mode\` enum('receptionist','clinician','gp','pharmacist') NOT NULL DEFAULT 'receptionist'`,
+      // Step 2: Migrate 'clinician' rows to 'gp'
+      `UPDATE \`scenarios\` SET \`mode\` = 'gp' WHERE \`mode\` = 'clinician'`,
+      // Step 3: Narrow enum to final values only
+      `ALTER TABLE \`scenarios\` MODIFY COLUMN \`mode\` enum('receptionist','gp','pharmacist') NOT NULL DEFAULT 'receptionist'`,
+    ],
+  },
+  {
+    name: "0005_scores_google_review",
+    // This migration is handled specially in runMigrations() below
+    // because it needs a JS-level column existence check
+    statements: [],
+  },
+  {
+    name: "0006_call_audits",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS \`call_audits\` (
+        \`id\` int AUTO_INCREMENT NOT NULL,
+        \`userId\` int NOT NULL,
+        \`clinicianName\` varchar(255),
+        \`emisNumber\` varchar(64),
+        \`auditDate\` varchar(32),
+        \`audioUrl\` text,
+        \`transcript\` mediumtext,
+        \`consultationSuitability\` varchar(16),
+        \`workingDiagnosis\` varchar(16),
+        \`redFlagsLight\` varchar(16),
+        \`treatmentFollowUp\` varchar(16),
+        \`criteriaScores\` json,
+        \`clinicalStrengths\` text,
+        \`clinicalConcerns\` text,
+        \`nonClinicalConcerns\` text,
+        \`additionalNotes\` text,
+        \`status\` varchar(32) NOT NULL DEFAULT 'pending',
+        \`createdAt\` timestamp NOT NULL DEFAULT (now()),
+        \`updatedAt\` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+        CONSTRAINT \`call_audits_id\` PRIMARY KEY(\`id\`)
       )`,
     ],
   },
@@ -180,6 +213,25 @@ export async function runMigrations() {
         `INSERT IGNORE INTO \`_migrations\` (\`name\`) VALUES (?)`,
         [migration.name]
       );
+      // Special handling for 0005: check column existence via JS before ALTER
+      if (migration.name === "0005_scores_google_review") {
+        const [colRows] = await conn.execute(
+          `SELECT COUNT(*) as cnt FROM information_schema.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE()
+             AND TABLE_NAME = 'scores'
+             AND COLUMN_NAME = 'googleReviewOffer'`
+        );
+        const colExists = (colRows as Array<{ cnt: number }>)[0]?.cnt > 0;
+        if (!colExists) {
+          await conn.execute(
+            `ALTER TABLE \`scores\` ADD COLUMN \`googleReviewOffer\` float NOT NULL DEFAULT 0`
+          );
+          console.log(`[Migration] Added googleReviewOffer column to scores`);
+        } else {
+          console.log(`[Migration] googleReviewOffer column already exists, skipping`);
+        }
+      }
+
       console.log(`[Migration] Completed: ${migration.name}`);
     }
 

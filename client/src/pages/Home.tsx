@@ -47,7 +47,7 @@ export default function Home() {
         <div className="container relative py-20 md:py-28">
           <div className="max-w-2xl">
             <div className="inline-flex items-center gap-2 bg-white/10 rounded-full px-2 py-1.5 text-sm font-medium mb-6 border border-white/20">
-              <img src="/manus-storage/gp-pathfinder-logo_dfe74db8.png" alt="GP Pathfinder Ai" className="h-6 w-auto object-contain" />
+              <img src="/assets/logo.png" alt="GP Pathfinder Ai" className="h-6 w-auto object-contain" />
             </div>
             <h1 className="text-4xl md:text-5xl font-bold leading-tight mb-5">
               Train Smarter.<br />
