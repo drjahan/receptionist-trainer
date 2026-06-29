@@ -313,6 +313,68 @@ ${googleReviewInstruction}`;
 
         return { content: aiContent };
       }),
+
+    // ─── ElevenLabs signed URL with dynamic patient persona override ─────────
+    getSignedUrl: protectedProcedure
+      .input(z.object({ sessionId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const session = await getSessionById(input.sessionId);
+        if (!session) throw new TRPCError({ code: "NOT_FOUND" });
+        if (session.userId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
+        const scenario = await getScenarioById(session.scenarioId);
+        if (!scenario) throw new TRPCError({ code: "NOT_FOUND" });
+
+        const apiKey = process.env.ELEVENLABS_API_KEY;
+        const agentId = process.env.ELEVENLABS_AGENT_ID;
+        if (!apiKey || !agentId) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "ElevenLabs not configured" });
+        }
+
+        const chatMode = (scenario.mode as string);
+        const isClinicianMode = chatMode === "gp";
+        const isPharmacistMode = chatMode === "pharmacist";
+        const googleReviewInstruction = `- IMPORTANT — Google Review: If the staff member offers you a personalised Google Review link at the end of the consultation and mentions their name (e.g. "If you were happy with the service today, I'd really appreciate it if you could leave us a Google review — here is the link: https://g.page/r/CemedDs5bp4FEBM/review — and if you mention my name, [name], you'll receive a £5 Amazon voucher as a thank you"), respond warmly and positively. If they do NOT offer this at the end, do not bring it up yourself.`;
+
+        const systemPrompt = isClinicianMode
+          ? `${scenario.patientPersona}\nIMPORTANT INSTRUCTIONS:\n- You are playing the patient character described above in a GP clinical consultation simulation.\n- Respond naturally as this patient would in a real GP appointment (face-to-face or telephone).\n- Keep responses realistic and conversational (2-5 sentences). Reveal information gradually — do not volunteer all symptoms at once.\n- Do not break character or acknowledge that this is a training exercise.\n- Do not give medical advice, diagnoses, or suggest treatments to the clinician.\n- React authentically to the clinician's approach — if they use ICE (ideas, concerns, expectations) and are empathetic, open up more; if they are dismissive or miss cues, be less forthcoming.\n- If the clinician asks a direct question, answer it honestly as the patient would.\n${googleReviewInstruction}`
+          : isPharmacistMode
+          ? `${scenario.patientPersona}\nIMPORTANT INSTRUCTIONS:\n- You are playing the patient character described above in a pharmacist consultation simulation.\n- Respond naturally as this patient would in a real pharmacy or GP surgery pharmacist consultation.\n- Keep responses realistic and conversational (2-5 sentences). Do not volunteer all information at once.\n- Do not break character or acknowledge that this is a training exercise.\n- Do not give medical advice, diagnoses, or suggest treatments to the pharmacist.\n- React authentically to the pharmacist's approach — if they are empathetic and explain things clearly, open up more; if they are dismissive, be less forthcoming.\n${googleReviewInstruction}`
+          : `${scenario.patientPersona}\nIMPORTANT INSTRUCTIONS:\n- You are playing the patient character described above. Stay in character throughout.\n- Respond naturally as this patient would in a real telephone call to a GP surgery.\n- Keep responses concise (2-4 sentences) as this is a phone call simulation.\n- Do not break character or acknowledge that this is a training exercise.\n- Do not give medical advice or diagnoses.\n- React authentically to how the receptionist handles the call — if they are empathetic and follow good practice, respond positively; if they are dismissive or make errors, react as the patient naturally would.\n${googleReviewInstruction}`;
+
+        // Get signed URL from ElevenLabs
+        const resp = await fetch(
+          `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${agentId}`,
+          { headers: { "xi-api-key": apiKey } }
+        );
+        if (!resp.ok) {
+          const errText = await resp.text();
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `ElevenLabs error: ${errText}` });
+        }
+        const { signed_url } = await resp.json() as { signed_url: string };
+        return { signedUrl: signed_url, systemPrompt };
+      }),
+
+    // ─── Save ElevenLabs transcript + mark session complete ───────────────────
+    saveAndEvaluate: protectedProcedure
+      .input(z.object({
+        sessionId: z.number(),
+        messages: z.array(z.object({
+          role: z.enum(["user", "assistant"]),
+          content: z.string(),
+        })),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const session = await getSessionById(input.sessionId);
+        if (!session) throw new TRPCError({ code: "NOT_FOUND" });
+        if (session.userId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
+        // Persist all ElevenLabs messages to the DB so scoring.evaluate can read them
+        for (const msg of input.messages) {
+          await addMessage({ sessionId: input.sessionId, role: msg.role, content: msg.content });
+        }
+        // Mark session complete (duration unknown for voice sessions — use 0 as placeholder)
+        await completeSession(input.sessionId, 0);
+        return { ok: true };
+      }),
   }),
 
   // ─── Scoring Engine ─────────────────────────────────────────────────────────
