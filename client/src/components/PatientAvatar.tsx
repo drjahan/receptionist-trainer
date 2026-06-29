@@ -12,10 +12,10 @@ const PORTRAITS: Record<string, string> = {
   "middle-aged-man":         "/manus-storage/middle-aged-man_686dbf16.png",
   "young-man":               "/manus-storage/young-man_25c64cbb.png",
   // GP-context portraits (generated for Coach AI)
-  "middle-aged-woman":       "/manus-storage/middle-aged-woman_966fc304.png",
-  "young-south-asian-man":   "/manus-storage/young-south-asian-man_9a70e28e.png",
-  "black-woman":             "/manus-storage/black-woman_2f06f71e.png",
-  "south-asian-elderly-woman": "/manus-storage/south-asian-elderly-woman_6084bcda.png",
+  "middle-aged-woman":       "/manus-storage/middle-aged-woman_2e0d7fde.png",
+  "young-south-asian-man":   "/manus-storage/young-south-asian-man_ac3d82a0.png",
+  "black-woman":             "/manus-storage/black-woman_ccba71fc.png",
+  "south-asian-elderly-woman": "/manus-storage/south-asian-elderly-woman_218a0714.png",
 };
 
 // ─── Category → portrait key mapping (GP Pathfinder context) ─────────────────
