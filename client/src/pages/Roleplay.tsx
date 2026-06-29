@@ -1,12 +1,13 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
 import AppLayout from "@/components/AppLayout";
+import PatientAvatar from "@/components/PatientAvatar";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { PhoneOff, Phone, User, Bot, Clock, AlertTriangle, Mic, MicOff, Star, ExternalLink } from "lucide-react";
+import { PhoneOff, Phone, User, Clock, AlertTriangle, Mic, MicOff, Star, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -82,6 +83,57 @@ function RoleplayInnerWithMessages({
   setLocalMessages: React.Dispatch<React.SetStateAction<{ id: number; role: "user" | "assistant"; content: string }[]>>;
 }) {
   return <RoleplayInnerCore localMessages={localMessages} setLocalMessages={setLocalMessages} />;
+}
+
+// ─── Portrait filename lookup (mirrors PatientAvatar logic) ─────────────────
+const PORTRAIT_FILES: Record<string, string> = {
+  "anxious-woman":             "anxious-woman_7cbbb983.png",
+  "elderly-man":               "elderly-man_08477041.png",
+  "frustrated-man":            "frustrated-man_13263915.png",
+  "young-woman":               "young-woman_a9fcd408.png",
+  "elderly-woman":             "elderly-woman_3012951b.png",
+  "concerned-woman":           "concerned-woman_afcf243d.png",
+  "middle-aged-man":           "middle-aged-man_686dbf16.png",
+  "young-man":                 "young-man_25c64cbb.png",
+  "middle-aged-woman":         "middle-aged-woman_966fc304.png",
+  "young-south-asian-man":     "young-south-asian-man_9a70e28e.png",
+  "black-woman":               "black-woman_2f06f71e.png",
+  "south-asian-elderly-woman": "south-asian-elderly-woman_6084bcda.png",
+};
+
+function getPortraitKeyForCategory(category: string): string {
+  const cat = category.toLowerCase();
+  if (cat.includes("appointment management"))                                   return PORTRAIT_FILES["anxious-woman"];
+  if (cat.includes("signposting") || cat.includes("self-care") || cat.includes("pharmacy first")) return PORTRAIT_FILES["young-woman"];
+  if (cat.includes("conflict") || cat.includes("de-escalation"))                return PORTRAIT_FILES["frustrated-man"];
+  if (cat.includes("information") || cat.includes("confidentiality"))           return PORTRAIT_FILES["concerned-woman"];
+  if (cat.includes("prescriptions") || cat.includes("medication"))              return PORTRAIT_FILES["young-south-asian-man"];
+  if (cat.includes("safeguarding") || cat.includes("mental health"))            return PORTRAIT_FILES["black-woman"];
+  if (cat.includes("third party") || cat.includes("consent"))                   return PORTRAIT_FILES["elderly-woman"];
+  if (cat.includes("digital") || cat.includes("technology"))                    return PORTRAIT_FILES["young-man"];
+  if (cat.includes("patient rights") || cat.includes("dignity"))                return PORTRAIT_FILES["middle-aged-woman"];
+  if (cat.includes("communication") || cat.includes("accessibility") || cat.includes("inclusion")) return PORTRAIT_FILES["elderly-man"];
+  if (cat.includes("home visit") || cat.includes("urgent care"))                return PORTRAIT_FILES["elderly-man"];
+  if (cat.includes("complaints") || cat.includes("feedback"))                   return PORTRAIT_FILES["middle-aged-man"];
+  if (cat.includes("fit note") || cat.includes("documentation"))                return PORTRAIT_FILES["middle-aged-man"];
+  if (cat.includes("registration") || cat.includes("eligibility"))              return PORTRAIT_FILES["young-south-asian-man"];
+  if (cat.includes("preventive") || cat.includes("immunis"))                    return PORTRAIT_FILES["young-woman"];
+  if (cat.includes("cardiovascular") || cat.includes("cardiology"))             return PORTRAIT_FILES["middle-aged-man"];
+  if (cat.includes("respiratory"))                                               return PORTRAIT_FILES["elderly-man"];
+  if (cat.includes("neurology"))                                                 return PORTRAIT_FILES["middle-aged-woman"];
+  if (cat.includes("gynaecology") || cat.includes("women's health"))            return PORTRAIT_FILES["young-woman"];
+  if (cat.includes("infectious") || cat.includes("antibiotic"))                 return PORTRAIT_FILES["young-south-asian-man"];
+  if (cat.includes("geriatrics") || cat.includes("frailty"))                    return PORTRAIT_FILES["south-asian-elderly-woman"];
+  if (cat.includes("allergy"))                                                   return PORTRAIT_FILES["young-woman"];
+  if (cat.includes("musculoskeletal"))                                           return PORTRAIT_FILES["middle-aged-man"];
+  if (cat.includes("endocrinology") || cat.includes("diabetes"))                return PORTRAIT_FILES["south-asian-elderly-woman"];
+  if (cat.includes("nephrology") || cat.includes("renal") || cat.includes("urology")) return PORTRAIT_FILES["elderly-man"];
+  if (cat.includes("paediatric"))                                                return PORTRAIT_FILES["young-woman"];
+  if (cat.includes("men's health"))                                              return PORTRAIT_FILES["young-man"];
+  if (cat.includes("dermatology"))                                               return PORTRAIT_FILES["middle-aged-woman"];
+  if (cat.includes("pain"))                                                      return PORTRAIT_FILES["elderly-woman"];
+  if (cat.includes("mrcgp") || cat.includes("csa"))                             return PORTRAIT_FILES["concerned-woman"];
+  return PORTRAIT_FILES["anxious-woman"];
 }
 
 // ─── Core inner component ─────────────────────────────────────────────────────
@@ -311,36 +363,14 @@ function RoleplayInnerCore({
 
           {/* Patient header strip */}
           <div className="flex items-center gap-4 px-5 py-4 border-b border-border/50 bg-muted/20 rounded-t-xl shrink-0">
-            {/* Animated patient avatar */}
-            <div className="relative w-12 h-12 shrink-0">
-              <div className={cn(
-                "w-12 h-12 rounded-full bg-rose-100 border-2 flex items-center justify-center transition-all duration-200",
-                isSpeaking ? "border-rose-400 shadow-lg shadow-rose-200" : "border-rose-200"
-              )}>
-                <Bot className={cn("w-6 h-6", isSpeaking ? "text-rose-600" : "text-rose-400")} />
-              </div>
-              {isSpeaking && (
-                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-background animate-pulse" />
-              )}
-            </div>
+            {/* Animated patient portrait avatar */}
+            <PatientAvatar
+              category={scenario.category}
+              isSpeaking={isSpeaking}
+              mouthOpenRatio={mouthOpenRatio}
+            />
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-semibold text-foreground truncate">{scenario.title}</p>
-                {isSpeaking && (
-                  <div className="flex items-end gap-0.5 h-3 shrink-0">
-                    {[0, 1, 2, 3, 4].map((i) => (
-                      <span
-                        key={i}
-                        className="w-0.5 rounded-full bg-primary"
-                        style={{
-                          height: `${Math.max(3, Math.round(mouthOpenRatio * 12 * (0.4 + Math.abs(Math.sin(i * 1.3)) * 0.6)))}px`,
-                          transition: "height 0.08s ease",
-                        }}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
+              <p className="text-sm font-semibold text-foreground truncate">{scenario.title}</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {isSpeaking
                   ? "Patient is speaking…"
@@ -366,10 +396,12 @@ function RoleplayInnerCore({
                 key={msg.id}
                 className={cn("flex gap-3", msg.role === "user" ? "justify-end" : "justify-start")}
               >
-                {msg.role === "assistant" && (
-                  <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center shrink-0 mt-0.5">
-                    <Bot className="w-4 h-4 text-rose-600" />
-                  </div>
+                {msg.role === "assistant" && scenario && (
+                  <img
+                    src={`/manus-storage/${getPortraitKeyForCategory(scenario.category)}`}
+                    alt="Patient"
+                    className="w-8 h-8 rounded-full object-cover object-top shrink-0 mt-0.5 border border-border"
+                  />
                 )}
                 <div
                   className={cn(
