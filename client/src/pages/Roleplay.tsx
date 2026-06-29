@@ -85,57 +85,6 @@ function RoleplayInnerWithMessages({
   return <RoleplayInnerCore localMessages={localMessages} setLocalMessages={setLocalMessages} />;
 }
 
-// ─── Portrait filename lookup (mirrors PatientAvatar logic) ─────────────────
-const PORTRAIT_FILES: Record<string, string> = {
-  "anxious-woman":             "anxious-woman_7cbbb983.png",
-  "elderly-man":               "elderly-man_08477041.png",
-  "frustrated-man":            "frustrated-man_13263915.png",
-  "young-woman":               "young-woman_a9fcd408.png",
-  "elderly-woman":             "elderly-woman_3012951b.png",
-  "concerned-woman":           "concerned-woman_afcf243d.png",
-  "middle-aged-man":           "middle-aged-man_686dbf16.png",
-  "young-man":                 "young-man_25c64cbb.png",
-  "middle-aged-woman":         "middle-aged-woman_966fc304.png",
-  "young-south-asian-man":     "young-south-asian-man_9a70e28e.png",
-  "black-woman":               "black-woman_2f06f71e.png",
-  "south-asian-elderly-woman": "south-asian-elderly-woman_6084bcda.png",
-};
-
-function getPortraitKeyForCategory(category: string): string {
-  const cat = category.toLowerCase();
-  if (cat.includes("appointment management"))                                   return PORTRAIT_FILES["anxious-woman"];
-  if (cat.includes("signposting") || cat.includes("self-care") || cat.includes("pharmacy first")) return PORTRAIT_FILES["young-woman"];
-  if (cat.includes("conflict") || cat.includes("de-escalation"))                return PORTRAIT_FILES["frustrated-man"];
-  if (cat.includes("information") || cat.includes("confidentiality"))           return PORTRAIT_FILES["concerned-woman"];
-  if (cat.includes("prescriptions") || cat.includes("medication"))              return PORTRAIT_FILES["young-south-asian-man"];
-  if (cat.includes("safeguarding") || cat.includes("mental health"))            return PORTRAIT_FILES["black-woman"];
-  if (cat.includes("third party") || cat.includes("consent"))                   return PORTRAIT_FILES["elderly-woman"];
-  if (cat.includes("digital") || cat.includes("technology"))                    return PORTRAIT_FILES["young-man"];
-  if (cat.includes("patient rights") || cat.includes("dignity"))                return PORTRAIT_FILES["middle-aged-woman"];
-  if (cat.includes("communication") || cat.includes("accessibility") || cat.includes("inclusion")) return PORTRAIT_FILES["elderly-man"];
-  if (cat.includes("home visit") || cat.includes("urgent care"))                return PORTRAIT_FILES["elderly-man"];
-  if (cat.includes("complaints") || cat.includes("feedback"))                   return PORTRAIT_FILES["middle-aged-man"];
-  if (cat.includes("fit note") || cat.includes("documentation"))                return PORTRAIT_FILES["middle-aged-man"];
-  if (cat.includes("registration") || cat.includes("eligibility"))              return PORTRAIT_FILES["young-south-asian-man"];
-  if (cat.includes("preventive") || cat.includes("immunis"))                    return PORTRAIT_FILES["young-woman"];
-  if (cat.includes("cardiovascular") || cat.includes("cardiology"))             return PORTRAIT_FILES["middle-aged-man"];
-  if (cat.includes("respiratory"))                                               return PORTRAIT_FILES["elderly-man"];
-  if (cat.includes("neurology"))                                                 return PORTRAIT_FILES["middle-aged-woman"];
-  if (cat.includes("gynaecology") || cat.includes("women's health"))            return PORTRAIT_FILES["young-woman"];
-  if (cat.includes("infectious") || cat.includes("antibiotic"))                 return PORTRAIT_FILES["young-south-asian-man"];
-  if (cat.includes("geriatrics") || cat.includes("frailty"))                    return PORTRAIT_FILES["south-asian-elderly-woman"];
-  if (cat.includes("allergy"))                                                   return PORTRAIT_FILES["young-woman"];
-  if (cat.includes("musculoskeletal"))                                           return PORTRAIT_FILES["middle-aged-man"];
-  if (cat.includes("endocrinology") || cat.includes("diabetes"))                return PORTRAIT_FILES["south-asian-elderly-woman"];
-  if (cat.includes("nephrology") || cat.includes("renal") || cat.includes("urology")) return PORTRAIT_FILES["elderly-man"];
-  if (cat.includes("paediatric"))                                                return PORTRAIT_FILES["young-woman"];
-  if (cat.includes("men's health"))                                              return PORTRAIT_FILES["young-man"];
-  if (cat.includes("dermatology"))                                               return PORTRAIT_FILES["middle-aged-woman"];
-  if (cat.includes("pain"))                                                      return PORTRAIT_FILES["elderly-woman"];
-  if (cat.includes("mrcgp") || cat.includes("csa"))                             return PORTRAIT_FILES["concerned-woman"];
-  return PORTRAIT_FILES["anxious-woman"];
-}
-
 // ─── Core inner component ─────────────────────────────────────────────────────
 function RoleplayInnerCore({
   localMessages,
@@ -194,24 +143,39 @@ function RoleplayInnerCore({
 
   const startCall = useCallback(async () => {
     if (!scenario) return;
+    // Step 1: request mic permission synchronously within the user gesture.
+    // On iOS Safari, getUserMedia MUST be the very first await — any prior async
+    // call breaks the gesture chain and causes NotAllowedError.
     try {
-      // Request mic permission first — must be in a user gesture handler
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Get a signed URL from the server with the scenario-specific patient persona baked in
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(t => t.stop()); // release immediately; ElevenLabs opens its own
+    } catch (micErr) {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      if (isIOS) {
+        toast.error(
+          "Microphone access denied. On iPhone/iPad: go to Settings → Safari → Microphone and allow access for this site, then try again.",
+          { duration: 9000 }
+        );
+      } else {
+        toast.error(
+          "Microphone access denied. Please allow microphone access in your browser settings and try again.",
+          { duration: 6000 }
+        );
+      }
+      console.error("getUserMedia failed:", micErr);
+      return;
+    }
+    // Step 2: fetch signed URL and start ElevenLabs session
+    try {
       const { signedUrl, systemPrompt } = await getSignedUrlMutation.mutateAsync({ sessionId });
-      // Start the ElevenLabs session — callbacks are registered on ConversationProvider
       controls.startSession({
         signedUrl,
         connectionType: "websocket",
-        overrides: {
-          agent: {
-            prompt: { prompt: systemPrompt },
-          },
-        },
+        overrides: { agent: { prompt: { prompt: systemPrompt } } },
       });
     } catch (err) {
       console.error("Failed to start voice session:", err);
-      toast.error("Could not start call. Please check microphone access and try again.");
+      toast.error("Could not start call. Please try again.");
     }
   }, [scenario, sessionId, controls, getSignedUrlMutation]);
 
@@ -363,7 +327,7 @@ function RoleplayInnerCore({
 
           {/* Patient header strip */}
           <div className="flex items-center gap-4 px-5 py-4 border-b border-border/50 bg-muted/20 rounded-t-xl shrink-0">
-            {/* Animated patient portrait avatar */}
+            {/* Portrait avatar — category-matched AI-generated photo */}
             <PatientAvatar
               category={scenario.category}
               isSpeaking={isSpeaking}
@@ -396,11 +360,12 @@ function RoleplayInnerCore({
                 key={msg.id}
                 className={cn("flex gap-3", msg.role === "user" ? "justify-end" : "justify-start")}
               >
-                {msg.role === "assistant" && scenario && (
-                  <img
-                    src={`/manus-storage/${getPortraitKeyForCategory(scenario.category)}`}
-                    alt="Patient"
-                    className="w-8 h-8 rounded-full object-cover object-top shrink-0 mt-0.5 border border-border"
+                {msg.role === "assistant" && (
+                  <PatientAvatar
+                    category={scenario.category}
+                    isSpeaking={false}
+                    mouthOpenRatio={0}
+                    className="w-8 h-8 [&>div]:w-8 [&>div]:h-8 [&_img]:w-8 [&_img]:h-8 [&_span]:hidden"
                   />
                 )}
                 <div
