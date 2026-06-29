@@ -459,8 +459,20 @@ export default function CallAudit() {
               </div>
 
               {/* GDPR consent reminder */}
-              <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
-                <strong>Consent reminder:</strong> Ensure you have obtained explicit consent from all parties before uploading a recording. The first 10 seconds of audio are automatically stripped by the on-premises DGX service before cloud transcription.
+              <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900 space-y-2">
+                <p className="font-bold text-amber-900">GDPR &amp; Data Protection Notice</p>
+                <p>
+                  These audits are conducted for <strong>clinical supervision purposes only</strong> and do not form part of any patient record.
+                </p>
+                <p>
+                  When uploading an EMIS or clinical system screenshot, please ensure that all <strong>patient-identifiable details</strong> — including name, date of birth, NHS number, and address — are <strong>cropped or redacted</strong> before upload.
+                </p>
+                <p>
+                  For your assurance: we operate an <strong>on-premises AI processing computer at Utopia House</strong> that automatically strips patient-identifiable information from the audio recording before any data leaves the building. Any information transmitted for cloud-based transcription and analysis is <strong>fully anonymised</strong> and relates to the clinician's consultation technique only.
+                </p>
+                <p>
+                  Please also ensure you have obtained <strong>explicit consent</strong> from all parties prior to recording the consultation.
+                </p>
               </div>
 
               <Button
