@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 
-const LOGO_URL = "/assets/logo.png";
+const LOGO_URL = "/manus-storage/GP_Pathfinder_Ai_Final_v2_527ddc9c.png";
 
 export default function Login() {
   const [, navigate] = useLocation();

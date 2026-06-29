@@ -41,7 +41,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             {/* Logo */}
             <Link href="/" className="flex items-center shrink-0">
               <img
-                src="/assets/logo.png"
+                src="/manus-storage/GP_Pathfinder_Ai_Final_v2_527ddc9c.png"
                 alt="GP Pathfinder Ai"
                 className="h-9 w-auto object-contain"
               />
