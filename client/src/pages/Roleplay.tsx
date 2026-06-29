@@ -6,7 +6,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { PhoneOff, Phone, User, Bot, Clock, AlertTriangle, Mic, MicOff, Star, ExternalLink } from "lucide-react";
+import { PhoneOff, Phone, User, Clock, AlertTriangle, Mic, MicOff, Star, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -142,24 +142,39 @@ function RoleplayInnerCore({
 
   const startCall = useCallback(async () => {
     if (!scenario) return;
+    // Step 1: request mic permission synchronously within the user gesture.
+    // On iOS Safari, getUserMedia MUST be the very first await — any prior async
+    // call breaks the gesture chain and causes NotAllowedError.
     try {
-      // Request mic permission first — must be in a user gesture handler
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Get a signed URL from the server with the scenario-specific patient persona baked in
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(t => t.stop()); // release immediately; ElevenLabs opens its own
+    } catch (micErr) {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      if (isIOS) {
+        toast.error(
+          "Microphone access denied. On iPhone/iPad: go to Settings → Safari → Microphone and allow access for this site, then try again.",
+          { duration: 9000 }
+        );
+      } else {
+        toast.error(
+          "Microphone access denied. Please allow microphone access in your browser settings and try again.",
+          { duration: 6000 }
+        );
+      }
+      console.error("getUserMedia failed:", micErr);
+      return;
+    }
+    // Step 2: fetch signed URL and start ElevenLabs session
+    try {
       const { signedUrl, systemPrompt } = await getSignedUrlMutation.mutateAsync({ sessionId });
-      // Start the ElevenLabs session — callbacks are registered on ConversationProvider
       controls.startSession({
         signedUrl,
         connectionType: "websocket",
-        overrides: {
-          agent: {
-            prompt: { prompt: systemPrompt },
-          },
-        },
+        overrides: { agent: { prompt: { prompt: systemPrompt } } },
       });
     } catch (err) {
       console.error("Failed to start voice session:", err);
-      toast.error("Could not start call. Please check microphone access and try again.");
+      toast.error("Could not start call. Please try again.");
     }
   }, [scenario, sessionId, controls, getSignedUrlMutation]);
 
@@ -317,7 +332,7 @@ function RoleplayInnerCore({
                 "w-12 h-12 rounded-full bg-rose-100 border-2 flex items-center justify-center transition-all duration-200",
                 isSpeaking ? "border-rose-400 shadow-lg shadow-rose-200" : "border-rose-200"
               )}>
-                <Bot className={cn("w-6 h-6", isSpeaking ? "text-rose-600" : "text-rose-400")} />
+                <User className={cn("w-6 h-6", isSpeaking ? "text-rose-600" : "text-rose-400")} />
               </div>
               {isSpeaking && (
                 <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-background animate-pulse" />
@@ -368,7 +383,7 @@ function RoleplayInnerCore({
               >
                 {msg.role === "assistant" && (
                   <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center shrink-0 mt-0.5">
-                    <Bot className="w-4 h-4 text-rose-600" />
+                    <User className="w-4 h-4 text-rose-600" />
                   </div>
                 )}
                 <div
