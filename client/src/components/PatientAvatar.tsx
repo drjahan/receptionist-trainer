@@ -1,21 +1,23 @@
 import { cn } from "@/lib/utils";
 
-// ─── Portrait photo URLs (AI-generated, hosted on Manus storage) ─────────────
-// 8 portraits shared with Dental Academy + 4 new GP-context portraits
+// ─── Portrait photo URLs (AI-generated, hosted on Manus CDN) ────────────────
+// All URLs use the d2xsxph8kpxj0f.cloudfront.net CDN which is publicly accessible
+// without auth — works on Railway and any deployment target.
 const PORTRAITS: Record<string, string> = {
-  "anxious-woman":           "/manus-storage/anxious-woman_7cbbb983.png",
-  "elderly-man":             "/manus-storage/elderly-man_08477041.png",
-  "frustrated-man":          "/manus-storage/frustrated-man_13263915.png",
-  "young-woman":             "/manus-storage/young-woman_a9fcd408.png",
-  "elderly-woman":           "/manus-storage/elderly-woman_3012951b.png",
-  "concerned-woman":         "/manus-storage/concerned-woman_afcf243d.png",
-  "middle-aged-man":         "/manus-storage/middle-aged-man_686dbf16.png",
-  "young-man":               "/manus-storage/young-man_25c64cbb.png",
-  // GP-context portraits (generated for Coach AI)
-  "middle-aged-woman":       "/manus-storage/middle-aged-woman_2e0d7fde.png",
-  "young-south-asian-man":   "/manus-storage/young-south-asian-man_ac3d82a0.png",
-  "black-woman":             "/manus-storage/black-woman_ccba71fc.png",
-  "south-asian-elderly-woman": "/manus-storage/south-asian-elderly-woman_218a0714.png",
+  // 8 freshly generated portraits (v2, Jun 2026)
+  "anxious-woman":           "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/anxious-woman-v2-mQLhZgbDpzJSYLfH7WVX7Z.webp",
+  "elderly-man":             "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/elderly-man-v2-LYxT5B4vjL93EenpHhW6Jm.webp",
+  "frustrated-man":          "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/frustrated-man-v2-ZBaU8GhBbMep92UysM3Wqg.webp",
+  "young-woman":             "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/young-woman-v2-5hwGPUcWjhxQ4Tei7DVK4b.webp",
+  "elderly-woman":           "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/elderly-woman-v2-SHHzfmPwB57YjU2ZrBf447.webp",
+  "concerned-woman":         "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/concerned-woman-v2-kVZZvenfNmCQrBLm9hViMD.webp",
+  "middle-aged-man":         "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/middle-aged-man-v2-A3QGsy4wy3ekVUJDjAKQRP.webp",
+  "young-man":               "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/young-man-v2-c6YCrpiCru3oRZma4ZqMqk.webp",
+  // GP-context portraits (uploaded Jun 2026)
+  "middle-aged-woman":       "/manus-storage/middle-aged-woman_afd83698.png",
+  "young-south-asian-man":   "/manus-storage/young-south-asian-man_c1d798f4.png",
+  "black-woman":             "/manus-storage/black-woman_9ad94444.png",
+  "south-asian-elderly-woman": "/manus-storage/south-asian-elderly-woman_28a00403.png",
 };
 
 // ─── Category → portrait key mapping (GP Pathfinder context) ─────────────────
