@@ -4,20 +4,21 @@ import { cn } from "@/lib/utils";
 // All URLs use the d2xsxph8kpxj0f.cloudfront.net CDN which is publicly accessible
 // without auth — works on Railway and any deployment target.
 const PORTRAITS: Record<string, string> = {
-  // 8 freshly generated portraits (v2, Jun 2026)
-  "anxious-woman":           "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/anxious-woman-v2-mQLhZgbDpzJSYLfH7WVX7Z.webp",
-  "elderly-man":             "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/elderly-man-v2-LYxT5B4vjL93EenpHhW6Jm.webp",
-  "frustrated-man":          "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/frustrated-man-v2-ZBaU8GhBbMep92UysM3Wqg.webp",
-  "young-woman":             "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/young-woman-v2-5hwGPUcWjhxQ4Tei7DVK4b.webp",
-  "elderly-woman":           "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/elderly-woman-v2-SHHzfmPwB57YjU2ZrBf447.webp",
-  "concerned-woman":         "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/concerned-woman-v2-kVZZvenfNmCQrBLm9hViMD.webp",
-  "middle-aged-man":         "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/middle-aged-man-v2-A3QGsy4wy3ekVUJDjAKQRP.webp",
-  "young-man":               "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/young-man-v2-c6YCrpiCru3oRZma4ZqMqk.webp",
-  // GP-context portraits (uploaded Jun 2026)
-  "middle-aged-woman":       "/manus-storage/middle-aged-woman_afd83698.png",
-  "young-south-asian-man":   "/manus-storage/young-south-asian-man_c1d798f4.png",
-  "black-woman":             "/manus-storage/black-woman_9ad94444.png",
-  "south-asian-elderly-woman": "/manus-storage/south-asian-elderly-woman_28a00403.png",
+  // Batch 1 — freshly generated photorealistic portraits (Jun 2026)
+  "anxious-woman":              "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/portrait-anxious-woman-Zq3HdwHNVa4qPUfvZwqjf4.webp",
+  "elderly-man":                "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/portrait-elderly-man-Mtgmk3YPNeLwbGcVrpwTwW.webp",
+  "frustrated-man":             "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/portrait-frustrated-man-NBZkje5mrefQ7PhbTpsjWd.webp",
+  "young-woman":                "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/portrait-young-woman-NVVLwn8wUzBADz4GT6wzuf.webp",
+  "elderly-woman":              "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/portrait-elderly-woman-3tDvz4zPFD4NhkDzDudUr2.webp",
+  // Batch 2 — diverse UK patient portraits (Jun 2026)
+  "concerned-woman":            "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/portrait-concerned-woman-KyugvQ7yKmY9tWdraGV3iJ.webp",
+  "middle-aged-man":            "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/portrait-middle-aged-man-Bvmuqkuttv7YVbfPA9QKzx.webp",
+  "young-man":                  "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/portrait-young-man-C8vM7tJEj4WXVxdG258SFF.webp",
+  "middle-aged-woman":          "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/portrait-middle-aged-woman-Um5AL5dc9xs6cGhN5fS2du.webp",
+  "young-south-asian-man":      "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/portrait-young-south-asian-man-T6Ypgbsxc9kGLLGHVJSXTz.webp",
+  // Batch 3 — South Asian elderly woman and Black British woman (Jun 2026)
+  "south-asian-elderly-woman":  "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/portrait-south-asian-elderly-woman-c2AiyWCmZkQVgTw4Ghbtp2.webp",
+  "black-woman":                "https://d2xsxph8kpxj0f.cloudfront.net/310519663716052239/js3eMMpFhsGdJ5siAQTARE/portrait-black-woman-idRaFdiWzFmQ9uDBgdzXig.webp",
 };
 
 // ─── Category → portrait key mapping (GP Pathfinder context) ─────────────────
