@@ -326,21 +326,72 @@ function RoleplayInnerCore({
         <div className="bg-card rounded-xl border border-border card-shadow flex flex-col" style={{ height: "calc(100vh - 380px)", minHeight: "480px" }}>
 
           {/* Patient header strip */}
-          <div className="flex items-center gap-4 px-5 py-4 border-b border-border/50 bg-muted/20 rounded-t-xl shrink-0">
-            {/* Portrait avatar — category-matched AI-generated photo */}
-            <PatientAvatar
-              category={scenario.category}
-              isSpeaking={isSpeaking}
-              mouthOpenRatio={mouthOpenRatio}
-            />
+          <div className="flex items-center gap-3 px-5 py-3 border-b border-border/50 bg-muted/20 rounded-t-xl shrink-0">
+            {/* Compact portrait avatar */}
+            <div className="relative shrink-0">
+              <div className={cn(
+                "w-11 h-11 rounded-full overflow-hidden border-2 transition-all duration-200",
+                isSpeaking ? "border-primary shadow-md shadow-primary/20" : "border-border/60"
+              )}>
+                <img
+                  src={(() => {
+                    // Inline portrait lookup — same mapping as PatientAvatar
+                    const cat = scenario.category.toLowerCase();
+                    const key =
+                      cat.includes("appointment") ? "anxious-woman" :
+                      cat.includes("signpost") || cat.includes("pharmacy") ? "young-woman" :
+                      cat.includes("conflict") || cat.includes("de-escal") ? "frustrated-man" :
+                      cat.includes("information") || cat.includes("confidential") ? "concerned-woman" :
+                      cat.includes("prescription") || cat.includes("medication") ? "young-south-asian-man" :
+                      cat.includes("safeguard") || cat.includes("mental health") ? "black-woman" :
+                      cat.includes("third party") || cat.includes("consent") ? "elderly-woman" :
+                      cat.includes("cardiovascular") || cat.includes("cardiology") ? "middle-aged-man" :
+                      cat.includes("respiratory") ? "elderly-man" :
+                      cat.includes("neurology") ? "middle-aged-woman" :
+                      cat.includes("geriatric") || cat.includes("frailty") ? "south-asian-elderly-woman" :
+                      cat.includes("diabetes") || cat.includes("endocrin") ? "south-asian-elderly-woman" :
+                      cat.includes("paediatric") ? "young-woman" :
+                      "anxious-woman";
+                    const portraits: Record<string,string> = {
+                      "anxious-woman": "/manus-storage/anxious-woman_7cbbb983.png",
+                      "elderly-man": "/manus-storage/elderly-man_08477041.png",
+                      "frustrated-man": "/manus-storage/frustrated-man_13263915.png",
+                      "young-woman": "/manus-storage/young-woman_a9fcd408.png",
+                      "elderly-woman": "/manus-storage/elderly-woman_3012951b.png",
+                      "concerned-woman": "/manus-storage/concerned-woman_afcf243d.png",
+                      "middle-aged-man": "/manus-storage/middle-aged-man_686dbf16.png",
+                      "young-man": "/manus-storage/young-man_25c64cbb.png",
+                      "middle-aged-woman": "/manus-storage/middle-aged-woman_2e0d7fde.png",
+                      "young-south-asian-man": "/manus-storage/young-south-asian-man_ac3d82a0.png",
+                      "black-woman": "/manus-storage/black-woman_ccba71fc.png",
+                      "south-asian-elderly-woman": "/manus-storage/south-asian-elderly-woman_218a0714.png",
+                    };
+                    return portraits[key] ?? portraits["anxious-woman"];
+                  })()}
+                  alt="Patient"
+                  className="w-full h-full object-cover object-top"
+                />
+              </div>
+              {/* Speaking indicator dot */}
+              <span className={cn(
+                "absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-background transition-colors duration-300",
+                isSpeaking ? "bg-emerald-500 animate-pulse" : isConnected ? "bg-emerald-400" : "bg-slate-300"
+              )} />
+            </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-foreground truncate">{scenario.title}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold text-foreground truncate">{scenario.title}</p>
+                {isSpeaking && (
+                  <div className="flex items-end gap-0.5 h-3 shrink-0">
+                    {[0,1,2,3,4].map(i => (
+                      <span key={i} className="w-0.5 rounded-full bg-primary"
+                        style={{ height: `${Math.max(3, Math.round(mouthOpenRatio * 12 * (0.4 + Math.abs(Math.sin(i * 1.3)) * 0.6)))}px`, transition: "height 0.08s ease" }} />
+                    ))}
+                  </div>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {isSpeaking
-                  ? "Patient is speaking…"
-                  : isConnected
-                  ? "Listening to you…"
-                  : "Press the microphone button to start the call"}
+                {isSpeaking ? "Patient is speaking…" : isConnected ? "Listening to you…" : "Press the microphone button to start the call"}
               </p>
             </div>
           </div>
